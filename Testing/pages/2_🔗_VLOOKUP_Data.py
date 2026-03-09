@@ -69,34 +69,17 @@ if file_utama is not None and file_ref is not None:
                 nama_kolom.insert(indeks_account + 2, 'K_Out by NIP')
                 
                 df_main = df_main[nama_kolom]
-                
-                # 🧹 Sapu bersih jam tengah malam di seluruh tabel sekaligus
                 df_main = df_main.replace(' 00:00:00', '', regex=False)
                 
                 baris_sph = df_main['RMCode'].fillna('').str.contains('SPH', case=False)
                 baris_cek_1 = df_main['<<cek>>'] == '1'
                 kondisi_anomali = baris_cek_1 | baris_sph
                 
-                # ==========================================
                 # MASUKKAN HASIL KE DALAM BRANKAS MEMORI
-                # ==========================================
-                # File 1: Brankas Aman (Gunakan .copy() agar mandiri)
-                df_aman_temp = df_main[~kondisi_anomali].copy()
-                df_aman_temp = df_aman_temp.sort_values(by='K_Out by NIP') # Diurutkan agar seragam seperti Excel
-                st.session_state.df_aman = df_aman_temp
-                
-                # File 2: Brankas Review
-                df_review_temp = df_main[kondisi_anomali].copy()
-                
-                # 🎯 TEMBAKAN SUPER AKURAT: Pastikan wujudnya teks saat dicocokkan
-                df_review_temp.loc[df_review_temp['<<cek>>'].astype(str) == '1', 'RMCode'] = ''
-                
-                # ⚡ CARA 1 BARIS (Jalan Pintas Pandas): Mengurutkan data dan menendang baris kosong ke paling bawah
-                df_review_temp = df_review_temp.replace('', None).sort_values(by=['<<cek>>', 'K_Out by NIP'], na_position='last').fillna('')
-                
-                # Masukkan tabel yang sudah bersih ke dalam brankas
-                st.session_state.df_review = df_review_temp
-                st.session_state.proses_selesai = True 
+                st.session_state.df_aman = df_main[~kondisi_anomali]
+                st.session_state.df_review = df_main[kondisi_anomali].sort_values(by=['<<cek>>'])
+                st.session_state.df_review.loc[st.session_state.df_review['<<cek>>'] == '1', 'RMCode'] = ''
+                st.session_state.proses_selesai = True # Kunci brankas ditandai "Ada Isinya"
                 
             except Exception as e:
                 st.error(f"❌ Terjadi kesalahan: {e}")
@@ -104,6 +87,8 @@ if file_utama is not None and file_ref is not None:
     # ==========================================
     # 3. AREA UNDUH DATA (MENGAMBIL DARI BRANKAS)
     # ==========================================
+    # Bagian ini letaknya sejajar (di luar) tombol Proses.
+    # Selama brankas ada isinya (True), tombol Download akan terus muncul!
     if st.session_state.proses_selesai:
         st.success("✅ Proses Selesai! Data berhasil dipisahkan berdasarkan kesesuaian cabang dan RMCode.")
         st.markdown("---")
@@ -120,7 +105,7 @@ if file_utama is not None and file_ref is not None:
                 data=buffer_aman.getvalue(),
                 file_name="File BBD RMCode 0.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="dl_btn_1" 
+                key="dl_btn_1" # Streamlit minta ID unik untuk tiap tombol
             )
         
         with col2:
