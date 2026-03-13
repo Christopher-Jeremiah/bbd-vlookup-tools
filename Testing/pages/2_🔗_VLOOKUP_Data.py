@@ -3,9 +3,9 @@ import pandas as pd
 import numpy as np
 import io
 
-st.set_page_config(page_title="Mesin BBD Otomatis", page_icon="⚙️", layout="wide")
-st.title("⚙️ Mesin Rekonsiliasi BBD (Cascading ETL)")
-st.write("Aplikasi ini dirancang khusus (hardcoded) untuk memproses data berjenjang. Anda wajib mengunggah File Utama dan Kamus 2 (List NIP). Kamus 1 (BBD Kemarin) bersifat opsional.")
+st.set_page_config(page_title="Otomatisasi BBD", page_icon="⚙️", layout="wide")
+st.title("⚙️ Otomatisasi BBD")
+st.write("Aplikasi ini dirancang khusus untuk memproses data BBD. Anda wajib mengunggah File Utama dan Kamus 2 (List NIP). Kamus 1 (BBD Kemarin) bersifat opsional.")
 
 # ==========================================
 # 0. INISIALISASI BRANKAS MEMORI
@@ -77,8 +77,8 @@ def baca_file(file, sheet, header):
 # 2. MESIN PENGOLAHAN (CASCADING ETL)
 # ==========================================
 if file_utama is not None and file_kamus2 is not None:
-    if st.button("🚀 Eksekusi Proses Berjenjang Sekarang!", use_container_width=True):
-        with st.spinner("Mesin sedang mengeksekusi Sihir Cascading ETL..."):
+    if st.button("🚀 Eksekusi Proses Data Sekarang!", use_container_width=True):
+        with st.spinner("Mesin sedang memproses..."):
             try:
                 st.session_state.pakai_kamus_1 = (file_kamus1 is not None)
                 
