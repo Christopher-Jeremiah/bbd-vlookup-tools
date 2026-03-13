@@ -20,7 +20,6 @@ if 'tabel_3a' not in st.session_state:
     st.session_state.tabel_3a = None
 if 'tabel_3b' not in st.session_state:
     st.session_state.tabel_3b = None
-# ---> PERUBAHAN: Radar pendeteksi apakah pengguna pakai Kamus 1 atau tidak
 if 'pakai_kamus_1' not in st.session_state:
     st.session_state.pakai_kamus_1 = False
 
@@ -81,7 +80,6 @@ if file_utama is not None and file_kamus2 is not None:
     if st.button("🚀 Eksekusi Proses Berjenjang Sekarang!", use_container_width=True):
         with st.spinner("Mesin sedang mengeksekusi Sihir Cascading ETL..."):
             try:
-                # Kunci status penggunaan Kamus 1
                 st.session_state.pakai_kamus_1 = (file_kamus1 is not None)
                 
                 df_u = baca_file(file_utama, sheet_u, header_u)
@@ -201,16 +199,20 @@ if file_utama is not None and file_kamus2 is not None:
                     mask_fallback = tabel_3['RMCode'].isna() | (tabel_3['RMCode'].astype(str).str.strip() == '') | (tabel_3['RMCode'].astype(str).str.strip().str.lower() == 'nan')
                     tabel_3.loc[mask_fallback, 'RMCode'] = tabel_3.loc[mask_fallback, 'KC'].map(kamus_2_cps_outlet)
                     
+                    # ---> PERUBAHAN LOGIKA KPP DI SINI <---
                     if 'KONVERSI KPP' in tabel_3.columns:
-                        kpp_str = tabel_3['KONVERSI KPP'].fillna('').astype(str).str.strip().str.upper()
-                        mask_kpp_kosong = (kpp_str == '') | (kpp_str == 'NAN')
+                        kpp_str = tabel_3['KONVERSI KPP'].fillna('').astype(str).str.strip().str.lower()
+                        # Kondisi: Bernilai TRUE jika isinya BUKAN "konversi konsumer"
+                        mask_bukan_konversi = (kpp_str != 'konversi konsumer')
                     else:
-                        mask_kpp_kosong = pd.Series(False, index=tabel_3.index)
+                        # Jika kolom anehnya tidak ada, lempar semua ke tabel 3B
+                        mask_bukan_konversi = pd.Series(True, index=tabel_3.index)
                         
-                    tabel_3b = tabel_3[mask_kpp_kosong].copy()
-                    tabel_3a = tabel_3[~mask_kpp_kosong].copy()
+                    tabel_3b = tabel_3[mask_bukan_konversi].copy()
+                    tabel_3a = tabel_3[~mask_bukan_konversi].copy()
                     
                     tabel_3b['RMCode'] = np.nan
+                    # ---> BATAS PERUBAHAN <---
                 else:
                     tabel_3a = pd.DataFrame()
                     tabel_3b = pd.DataFrame()
@@ -247,7 +249,6 @@ if st.session_state.proses_selesai:
             df.to_excel(writer, index=False)
         return buffer.getvalue()
 
-    # ---> LOGIKA UI BARU: Jika pakai 3 File vs 2 File <---
     if st.session_state.pakai_kamus_1:
         st.subheader("📥 Unduh Hasil Pemrosesan (4 File Terpisah)")
         col1, col2 = st.columns(2)
@@ -264,17 +265,16 @@ if st.session_state.proses_selesai:
                 st.download_button("⬇️ Download Tabel 2", data=df_to_excel(st.session_state.tabel_2), file_name="2_Tabel_Match_NIP.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             
         with col3:
-            st.warning(f"⚠️ **Tabel 3A (Anomali - KPP Ada)**\nBerisi {len(st.session_state.tabel_3a)} baris data.")
+            st.warning(f"⚠️ **Tabel 3A (Anomali - Konversi Konsumer)**\nBerisi {len(st.session_state.tabel_3a)} baris data.")
             if not st.session_state.tabel_3a.empty:
-                st.download_button("⬇️ Download Tabel 3A", data=df_to_excel(st.session_state.tabel_3a), file_name="3A_Tabel_Anomali_KPP_Terisi.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("⬇️ Download Tabel 3A", data=df_to_excel(st.session_state.tabel_3a), file_name="3A_Tabel_Anomali_Konversi_Konsumer.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             
         with col4:
-            st.error(f"🛑 **Tabel 3B (Anomali - KPP Kosong)**\nBerisi {len(st.session_state.tabel_3b)} baris data.")
+            st.error(f"🛑 **Tabel 3B (Anomali - Bukan Konv. Konsumer)**\nBerisi {len(st.session_state.tabel_3b)} baris data.")
             if not st.session_state.tabel_3b.empty:
-                st.download_button("⬇️ Download Tabel 3B", data=df_to_excel(st.session_state.tabel_3b), file_name="3B_Tabel_Anomali_KPP_Kosong.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("⬇️ Download Tabel 3B", data=df_to_excel(st.session_state.tabel_3b), file_name="3B_Tabel_Anomali_Bukan_Konversi.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     else:
-        # Tampilan khusus jika Kamus 1 TIDAK diunggah (Hanya 3 kotak)
         st.subheader("📥 Unduh Hasil Pemrosesan (3 File Terpisah)")
         col1, col2, col3 = st.columns(3)
         
@@ -284,14 +284,14 @@ if st.session_state.proses_selesai:
                 st.download_button("⬇️ Download Data Valid", data=df_to_excel(st.session_state.tabel_2), file_name="1_Data_Valid_NIP.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
         with col2:
-            st.warning(f"⚠️ **Data Anomali (KPP Terisi)**\nBerisi {len(st.session_state.tabel_3a)} baris data.")
+            st.warning(f"⚠️ **Data Anomali (Konversi Konsumer)**\nBerisi {len(st.session_state.tabel_3a)} baris data.")
             if not st.session_state.tabel_3a.empty:
-                st.download_button("⬇️ Download Anomali KPP Terisi", data=df_to_excel(st.session_state.tabel_3a), file_name="2_Anomali_KPP_Terisi.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("⬇️ Download Anomali Konversi", data=df_to_excel(st.session_state.tabel_3a), file_name="2_Anomali_Konversi_Konsumer.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
         with col3:
-            st.error(f"🛑 **Data Anomali (KPP Kosong)**\nBerisi {len(st.session_state.tabel_3b)} baris data.")
+            st.error(f"🛑 **Data Anomali (Bukan Konv. Konsumer)**\nBerisi {len(st.session_state.tabel_3b)} baris data.")
             if not st.session_state.tabel_3b.empty:
-                st.download_button("⬇️ Download Anomali KPP Kosong", data=df_to_excel(st.session_state.tabel_3b), file_name="3_Anomali_KPP_Kosong.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("⬇️ Download Anomali Bukan Konv.", data=df_to_excel(st.session_state.tabel_3b), file_name="3_Anomali_Bukan_Konversi.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 elif not file_utama or not file_kamus2:
     st.info("👈 Silakan unggah minimal File Utama dan Kamus 2 (List NIP) di menu sebelah kiri terlebih dahulu.")
