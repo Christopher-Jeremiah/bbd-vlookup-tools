@@ -40,7 +40,7 @@ if file_utama is not None:
         sheet_u = st.sidebar.selectbox("File Utama: Pilih Sheet", xls_u.sheet_names)
     else:
         sheet_u = 0
-    header_u = st.sidebar.number_input("File Utama: Baris Header (Mulai 0)", min_value=0, value=1, step=1)
+    header_u = st.sidebar.number_input("File Utama: Baris Header (Mulai 0)", min_value=0, value=0, step=1)
 else:
     sheet_u = 0
     header_u = 1
