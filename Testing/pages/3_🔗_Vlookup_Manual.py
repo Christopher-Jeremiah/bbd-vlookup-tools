@@ -5,8 +5,8 @@ import numpy as np
 from openpyxl.styles import PatternFill
 
 st.set_page_config(page_title="Ultimate Data Pipeline", layout="wide")
-st.title("⚙️ Hub Otomatisasi Data Universal (Ultimate Edition)")
-st.write("Bangun alur pemrosesan data Anda sendiri. Fleksibilitas penuh dengan kekuatan Cascading ETL dan N-Tier Fallback.")
+st.title("📊 Hub Otomatisasi BBD & VLOOKUP")
+st.write("Jalankan pembersihan data, VLOOKUP berantai, N-Tier Fallback, dan pemecahan file Excel (Splitter) secara instan tanpa perlu merakit rumus manual.")
 
 # ==========================================
 # 0. INISIALISASI MEMORI (BRANKAS)
@@ -27,8 +27,10 @@ init_state('hasil_tabel', {})
 
 def tambah_item(list_name): 
     st.session_state[list_name].append(np.random.randint(10000, 99999))
+    
 def hapus_item(list_name, uid): 
-    st.session_state[list_name].remove(uid)
+    if uid in st.session_state[list_name]: 
+        st.session_state[list_name].remove(uid)
 
 def tambah_fb_layer():
     new_id = np.random.randint(10000, 99999)
@@ -36,7 +38,8 @@ def tambah_fb_layer():
     st.session_state.fb_conds[new_id] = [np.random.randint(10000, 99999)]
 
 def hapus_fb_layer(uid):
-    st.session_state.id_fb.remove(uid)
+    if uid in st.session_state.id_fb:
+        st.session_state.id_fb.remove(uid)
     if uid in st.session_state.fb_conds:
         del st.session_state.fb_conds[uid]
 
@@ -46,22 +49,24 @@ def tambah_fb_cond(layer_uid):
     st.session_state.fb_conds[layer_uid].append(np.random.randint(10000, 99999))
 
 def hapus_fb_cond(layer_uid, cond_uid):
-    st.session_state.fb_conds[layer_uid].remove(cond_uid)
+    if layer_uid in st.session_state.fb_conds:
+        if cond_uid in st.session_state.fb_conds[layer_uid]:
+            st.session_state.fb_conds[layer_uid].remove(cond_uid)
 
 # ==========================================
 # 1. PINTU MASUK FILE (3 KOLOM)
 # ==========================================
-st.markdown("### 📥 Input File Data")
+st.markdown("### 📥 Langkah 1: Upload File Base & Referensi")
 col1, col2, col3 = st.columns(3)
 with col1:
-    file_u = st.file_uploader("1. Tabel Utama [Wajib]", type=["xlsx", "csv"])
-    head_u = st.number_input("Header Utama:", 0, step=1) if file_u else 0
+    file_u = st.file_uploader("1. File Utama (Data Mentah) [Wajib]", type=["xlsx", "csv"])
+    head_u = st.number_input("Mulai dari Baris Header:", 0, step=1, key="h1") if file_u else 0
 with col2:
-    file_k = st.file_uploader("2. Tabel Kamus Utama [Wajib]", type=["xlsx", "csv"])
-    head_k = st.number_input("Header Kamus Utama:", 0, step=1) if file_k else 0
+    file_k = st.file_uploader("2. File Kamus Utama (Table Array) [Wajib]", type=["xlsx", "csv"])
+    head_k = st.number_input("Mulai dari Baris Header:", 0, step=1, key="h2") if file_k else 0
 with col3:
-    file_o = st.file_uploader("3. Kamus Opsional (Kemarin) [Opsional]", type=["xlsx", "csv"])
-    head_o = st.number_input("Header Kamus Opsional:", 0, step=1) if file_o else 0
+    file_o = st.file_uploader("3. File Kamus H-1 (Opsional)", type=["xlsx", "csv"])
+    head_o = st.number_input("Mulai dari Baris Header:", 0, step=1, key="h3") if file_o else 0
 
 if file_u and file_k:
     try:
@@ -92,224 +97,231 @@ if file_u and file_k:
         
         kolom_dinamis = list(df_u.columns)
         dict_kamus = {"Kamus Utama": df_k}
-        if not df_o.empty: dict_kamus["Kamus Opsional"] = df_o
+        if not df_o.empty: dict_kamus["Kamus H-1 (Opsional)"] = df_o
         pilihan_kamus = list(dict_kamus.keys())
         
     except Exception as e:
-        st.error(f"Gagal membaca file: {e}")
+        st.error(f"Gagal membaca file. Pastikan baris judul (header) sudah benar. Pesan error: {e}")
         st.stop()
 
     st.markdown("---")
 
     # ==========================================
-    # UI TAHAP 1: PEMBERSIHAN AWAL (FIND & REPLACE)
+    # UI TAHAP 1: PEMBERSIHAN AWAL
     # ==========================================
-    st.subheader("🧹 Tahap 1: Pembersihan & Ganti Data")
+    st.subheader("🧹 Tahap 1: Data Cleaning (Find & Replace)")
     
     daftar_kolom_utama = ["(Lewati)"] + kolom_dinamis
-    pilihan_hapus_kosong = st.selectbox("Hapus baris jika kolom ini kosong (Biasanya Baris Total):", daftar_kolom_utama)
+    pilihan_hapus_kosong = st.selectbox("Hapus seluruh baris jika kolom ini #N/A (Misal untuk membuang baris 'Grand Total'):", daftar_kolom_utama)
     st.markdown("---")
     
-    st.markdown("**Cari dan Ganti Nilai (Find & Replace Sebelum VLOOKUP):**")
+    st.markdown("**Find & Replace Data Spesifik (Dieksekusi sebelum VLOOKUP):**")
     for uid in st.session_state.id_ganti:
         c1, c2, c3, c4, c5 = st.columns([2, 4, 2, 2, 1])
-        with c1: kol_g = st.selectbox("Di Kolom:", kolom_dinamis, key=f"kg_{uid}")
+        with c1: kol_g = st.selectbox("Target Kolom:", kolom_dinamis, key=f"kg_{uid}")
         with c2: 
             nilai_unik = df_u[kol_g].dropna().astype(str).unique().tolist() if kol_g in df_u.columns else []
-            cari_g = st.multiselect("Pilih data yang diganti:", nilai_unik, key=f"cg_{uid}")
-        with c3: tipe_g = st.selectbox("Ubah menjadi:", ["Teks Baru", "Kosong (NaN/Blank)"], key=f"tg_{uid}")
-        with c4: ganti_g = st.text_input("Teks Baru:", key=f"gg_{uid}") if tipe_g == "Teks Baru" else ""
+            cari_g = st.multiselect("Find (Pilih nilai):", nilai_unik, key=f"cg_{uid}")
+        with c3: tipe_g = st.selectbox("Action:", ["Replace dengan Teks", "Clear Content (#N/A)"], key=f"tg_{uid}")
+        with c4: ganti_g = st.text_input("Replace With:", key=f"gg_{uid}") if tipe_g == "Replace dengan Teks" else ""
         with c5: 
             st.markdown("<br>", unsafe_allow_html=True)
             st.button("❌", key=f"dx_{uid}", on_click=hapus_item, args=('id_ganti', uid))
             
-    st.button("➕ Tambah Aturan Ganti Data", key="btn_add_ganti", on_click=tambah_item, args=('id_ganti',))
+    st.button("➕ Tambah Aturan Find & Replace", key="btn_add_ganti", on_click=tambah_item, args=('id_ganti',))
     st.markdown("---")
 
     # ==========================================
-    # UI TAHAP 1.5: VLOOKUP AWAL (DARI KAMUS OPSIONAL)
+    # UI TAHAP 1.5: VLOOKUP AWAL
     # ==========================================
-    st.subheader("🕰️ Tahap 1.5: VLOOKUP Awal (Dari Kamus Opsional)")
+    st.subheader("🕰️ Tahap 1.5: VLOOKUP Laporan H-1 (Opsional)")
     tarik_awal_aktif = False
     
     if not df_o.empty:
-        tarik_awal_aktif = st.checkbox("Aktifkan Tarik Data Awal (Contoh: Tarik RMCode Kemarin)", value=True)
+        tarik_awal_aktif = st.checkbox("Aktifkan VLOOKUP ke Kamus H-1", value=True)
         if tarik_awal_aktif:
             c1, c2, c3 = st.columns(3)
-            with c1: kunci_u_awal = st.selectbox("Kunci di Tabel Utama:", kolom_dinamis, key="ku_awal")
-            with c2: kunci_o_awal = st.selectbox("Kunci di Kamus Opsional:", df_o.columns, key="ko_awal")
-            with c3: target_o_awal = st.selectbox("Data yang Ditarik:", df_o.columns, key="to_awal")
+            with c1: kunci_u_awal = st.selectbox("Lookup Value (Kunci di File Utama):", kolom_dinamis, key="ku_awal")
+            with c2: kunci_o_awal = st.selectbox("Table Array (Kunci di Kamus H-1):", df_o.columns, key="ko_awal")
+            with c3: target_o_awal = st.selectbox("Return Value (Kolom yang ditarik):", df_o.columns, key="to_awal")
             
             c4, c5 = st.columns(2)
-            with c4: mode_awal = st.radio("Penempatan:", ["Buat Kolom Baru", "Timpa Kolom Lama"], key="ma_awal", horizontal=True)
+            with c4: mode_awal = st.radio("Penempatan Hasil VLOOKUP:", ["Insert Kolom Baru", "Overwrite (Timpa) Kolom Lama"], key="ma_awal", horizontal=True)
             with c5:
-                if mode_awal == "Buat Kolom Baru":
-                    nama_target_awal = st.text_input("Nama Kolom Baru:", value=target_o_awal, key="nt_awal")
+                if mode_awal == "Insert Kolom Baru":
+                    nama_target_awal = st.text_input("Nama Kolom Barunya:", value=target_o_awal, key="nt_awal")
                     if nama_target_awal and nama_target_awal not in kolom_dinamis:
                         kolom_dinamis.append(nama_target_awal)
                 else:
-                    nama_target_awal = st.selectbox("Pilih Kolom Ditimpa:", kolom_dinamis, key="nt_awal_timpa")
+                    nama_target_awal = st.selectbox("Pilih Kolom yang akan di-Overwrite:", kolom_dinamis, key="nt_awal_timpa")
                     
-            st.markdown("**Pemisahan Tabel Pertama:**")
-            pisah_awal_aktif = st.checkbox("Pisahkan baris yang berhasil ditarik ke file terpisah (Match Kemarin)", value=True)
+            st.markdown("**Splitter Tahap 1:**")
+            pisah_awal_aktif = st.checkbox("Extract (Pisahkan) baris yang hasil VLOOKUP-nya 'Matched' ke file Excel terpisah", value=True)
             if pisah_awal_aktif:
-                nama_t1 = st.text_input("Nama File Output Tahap 1:", value="Tabel 1 (Match Opsional)", key="nama_t1")
+                nama_t1 = st.text_input("Simpan sebagai File/Tabel bernama:", value="Tabel 1 (Match H-1)", key="nama_t1")
     else:
-        st.info("Unggah Kamus Opsional (File 3) untuk membuka pengaturan ini.")
+        st.info("Upload File Kamus H-1 di Langkah 1 untuk membuka menu ini.")
     st.markdown("---")
 
     # ==========================================
-    # UI TAHAP 2: VLOOKUP UTAMA, VALIDASI & SPLIT 2
+    # UI TAHAP 2: VLOOKUP UTAMA & SPLIT
     # ==========================================
-    st.subheader("🔗 Tahap 2: VLOOKUP Utama, Validasi Silang, & Ekstraksi")
-    t2_aktif = st.checkbox("Aktifkan VLOOKUP Utama", value=True)
+    st.subheader("🔗 Tahap 2: VLOOKUP Kamus Utama & Cross-Validation")
+    t2_aktif = st.checkbox("Aktifkan VLOOKUP Kamus Utama", value=True)
     if t2_aktif:
-        st.markdown("**1. Tarik Data dari Kamus Utama**")
+        st.markdown("**A. Parameter VLOOKUP**")
         c1, c2 = st.columns(2)
-        with c1: t2_ku = st.selectbox("Kunci Utama:", kolom_dinamis, key="t2_ku")
-        with c2: t2_kk = st.selectbox("Kunci Kamus Utama:", df_k.columns, key="t2_kk")
+        with c1: t2_ku = st.selectbox("Lookup Value (Kunci di File Utama):", kolom_dinamis, key="t2_ku")
+        with c2: t2_kk = st.selectbox("Table Array (Kunci di Kamus Utama):", df_k.columns, key="t2_kk")
         
-        t2_tarikan = st.multiselect("Pilih Data yang Ditarik:", df_k.columns, key="t2_tarik")
+        st.markdown("**B. Mapping Return Value**")
+        t2_tarikan = st.multiselect("Pilih kolom yang ditarik (Bisa > 1):", df_k.columns, key="t2_tarik")
         t2_map_kolom = {}
         for t in t2_tarikan:
             c_m1, c_m2 = st.columns(2)
             with c_m1:
-                mode_t2 = st.radio(f"Penempatan untuk '{t}':", ["Buat Kolom Baru", "Timpa Kolom Lama"], key=f"mode_t2_{t}", horizontal=True)
+                mode_t2 = st.radio(f"Penempatan untuk '{t}':", ["Insert Kolom Baru", "Overwrite Kolom Lama"], key=f"mode_t2_{t}", horizontal=True)
             with c_m2:
-                if mode_t2 == "Buat Kolom Baru":
-                    nama_t2_t = st.text_input(f"Nama Kolom Baru:", value=t, key=f"t2_n_{t}")
+                if mode_t2 == "Insert Kolom Baru":
+                    nama_t2_t = st.text_input(f"Nama Kolom Barunya:", value=t, key=f"t2_n_{t}")
                     if nama_t2_t and nama_t2_t not in kolom_dinamis: kolom_dinamis.append(nama_t2_t)
                     t2_map_kolom[t] = {"mode": mode_t2, "target": nama_t2_t}
                 else:
-                    nama_t2_t = st.selectbox(f"Pilih Kolom Ditimpa:", kolom_dinamis, key=f"t2_s_{t}")
+                    nama_t2_t = st.selectbox(f"Kolom yang di-Overwrite:", kolom_dinamis, key=f"t2_s_{t}")
                     t2_map_kolom[t] = {"mode": mode_t2, "target": nama_t2_t}
 
-        st.markdown("**2. Validasi Silang (Pembuatan Parameter <<cek>>)**")
-        val_aktif = st.checkbox("Aktifkan Validasi Silang")
+        st.markdown("**C. Cross-Validation (Buat kolom cek parameter. Misal: Cek jika Cabang == K_Outlet)**")
+        val_aktif = st.checkbox("Aktifkan Cross-Validation")
         if val_aktif:
             c1, c2, c3 = st.columns(3)
-            with c1: val_kiri = st.selectbox("Cek Kolom Kiri:", kolom_dinamis, key="vk_kiri")
-            with c2: val_op = st.selectbox("Kondisi:", ["Sama Dengan (==)", "Tidak Sama (!=)"], key="vk_op")
-            with c3: val_kanan = st.selectbox("Dengan Kolom Kanan:", kolom_dinamis, key="vk_kanan")
+            with c1: val_kiri = st.selectbox("Kolom Kiri:", kolom_dinamis, key="vk_kiri")
+            with c2: val_op = st.selectbox("Operator:", ["Sama Persis (==)", "Berbeda (!=)"], key="vk_op")
+            with c3: val_kanan = st.selectbox("Kolom Kanan:", kolom_dinamis, key="vk_kanan")
             
             c4, c5, c6 = st.columns(3)
             with c4: 
-                val_hasil = st.text_input("Simpan Hasil di Kolom:", value="<<cek>>", key="vk_hasil")
+                val_hasil = st.text_input("Nama Kolom Validator:", value="<<cek>>", key="vk_hasil")
                 if val_hasil not in kolom_dinamis: kolom_dinamis.append(val_hasil)
-            with c5: val_b = st.text_input("Jika Benar isi:", value="0", key="vk_b")
-            with c6: val_s = st.text_input("Jika Salah isi:", value="1", key="vk_s")
+            with c5: val_b = st.text_input("Value jika TRUE:", value="0", key="vk_b")
+            with c6: val_s = st.text_input("Value jika FALSE:", value="1", key="vk_s")
 
-        st.markdown("**3. Ekstraksi Tabel 2 (Syarat Tak Terbatas & Aksi Terarah):**")
-        pisah_t2_aktif = st.checkbox("Aktifkan Pemisahan Tabel 2", value=True)
+        st.markdown("**D. Splitter Tahap 2**")
+        pisah_t2_aktif = st.checkbox("Aktifkan Ekstraksi File (Splitter)", value=True)
         if pisah_t2_aktif:
             c1, c2 = st.columns([2, 3])
-            with c1: nama_t2 = st.text_input("Nama File Output Tahap 2:", value="Tabel 2 (Valid)", key="nama_t2")
+            default_t2 = "Tabel 2 (Data Valid)" if not df_o.empty else "Tabel 1 (Data Valid)"
+            
+            with c1: nama_t2 = st.text_input("Simpan sebagai File/Tabel bernama:", value=default_t2, key="nama_t2")
             with c2: 
-                aksi_t2 = st.radio("Tindakan untuk baris yang MEMENUHI syarat di bawah:", 
-                    ["Dilempar ke Tahap 3 (Sisa data yang bersih disimpan di Tabel 2)", 
-                     "Simpan di Tabel 2 (Sisa data dilempar ke Tahap 3)"], 
+                aksi_t2 = st.radio("Routing Baris (Data yang memenuhi syarat di bawah akan...):", 
+                    [f"Dilempar ke Tahap 3 (Sisa data yang bersih mengendap di {nama_t2})", 
+                     f"Diekstrak ke {nama_t2} (Sisa data dilempar ke Tahap 3)"], 
                     key="aksi_t2")
                 
-            logika_t2 = st.radio("Logika Penggabungan Syarat:", ["Wajib Penuhi SEMUA Syarat (AND)", "Penuhi SALAH SATU Syarat (OR)"], horizontal=True, key="logika_t2")
+            logika_t2 = st.radio("Logika Filter Gabungan:", 
+                                 ["Wajib penuhi SEMUA syarat (AND)", "Cukup penuhi SALAH SATU (OR)"], horizontal=True, key="logika_t2")
             
             for uid in st.session_state.id_split2:
                 c1, c2, c3, c4 = st.columns([3, 2, 3, 1])
                 with c1: k_val = st.selectbox("Kolom:", kolom_dinamis, key=f"s2k_{uid}")
-                with c2: o_val = st.selectbox("Kondisi:", ["Sama Dengan", "Tidak Sama", "Mengandung", "TIDAK Mengandung", "Kosong", "Tidak Kosong"], key=f"s2o_{uid}")
+                with c2: o_val = st.selectbox("Operator:", ["Sama Dengan (==)", "Tidak Sama (!=)", "Mengandung Teks", "TIDAK Mengandung Teks", "Kosong (Blank / #N/A)", "Tidak Kosong (Ada isinya)"], key=f"s2o_{uid}")
                 with c3: 
-                    if o_val in ["Sama Dengan", "Tidak Sama"]:
+                    if o_val in ["Sama Dengan (==)", "Tidak Sama (!=)"]:
                         if k_val in df_u.columns:
-                            ops_u = ["(Ketik Manual)"] + list(df_u[k_val].dropna().astype(str).unique())
-                            pil_v = st.selectbox("Pilih Nilai:", ops_u, key=f"s2v_sel_{uid}")
-                            if pil_v == "(Ketik Manual)":
-                                st.text_input("Ketik Manual:", key=f"s2v_man_{uid}")
+                            ops_u = ["(Input Manual)"] + list(df_u[k_val].dropna().astype(str).unique())
+                            pil_v = st.selectbox("Value:", ops_u, key=f"s2v_sel_{uid}")
+                            if pil_v == "(Input Manual)":
+                                st.text_input("Input Manual:", key=f"s2v_man_{uid}")
                         else:
-                            st.text_input("Ketik Nilai (Kolom baru dibuat mesin):", key=f"s2v_man_{uid}")
-                    elif o_val not in ["Kosong", "Tidak Kosong"]:
-                        st.text_input("Nilai Teks:", key=f"s2v_{uid}")
+                            st.text_input("Value:", key=f"s2v_man_{uid}")
+                    elif o_val not in ["Kosong (Blank / #N/A)", "Tidak Kosong (Ada isinya)"]:
+                        st.text_input("Value Teks:", key=f"s2v_{uid}")
                 with c4: 
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.button("❌", key=f"s2x_{uid}", on_click=hapus_item, args=('id_split2', uid))
-            st.button("➕ Tambah Syarat (Tahap 2)", key="btn_add_split2", on_click=tambah_item, args=('id_split2',))
+            st.button("➕ Tambah Syarat Filter", key="btn_add_split2", on_click=tambah_item, args=('id_split2',))
     st.markdown("---")
 
     # ==========================================
     # UI TAHAP 3: FALLBACK & PEMISAHAN AKHIR
     # ==========================================
-    st.subheader("⚠️ Tahap 3: Mesin N-Tier Fallback & Pemisahan Akhir")
-    t3_aktif = st.checkbox("Aktifkan Tahap 3 (Proses Sisa Data Anomali)", value=True)
+    st.subheader("⚠️ Tahap 3: N-Tier Fallback VLOOKUP & Split Akhir")
+    t3_aktif = st.checkbox("Aktifkan Tahap 3 (Proses baris anomali yang masih #N/A)", value=True)
     if t3_aktif:
-        st.markdown("**1. Mesin N-Tier Fallback (Eksekusi VLOOKUP cadangan pada sisa data SEBELUM dipisah):**")
-        target_fb = st.selectbox("Kolom Target yang akan diisi Fallback:", kolom_dinamis, key="tfb_target")
+        st.markdown("**1. Mesin N-Tier Fallback (Eksekusi VLOOKUP cadangan secara berlapis):**")
+        target_fb = st.selectbox("Target Kolom yang akan diselamatkan (Diisi Fallback):", kolom_dinamis, key="tfb_target")
         
-        reset_target_fb = st.checkbox("Kosongkan (Reset) isi Kolom Target di atas sebelum Fallback pertama berjalan agar data lama (seperti 'SPH') tertimpa.", value=True)
+        reset_target_fb = st.checkbox("Clear Content (Hapus isi) kolom target di atas sebelum Fallback pertama berjalan agar tidak skip data lama.", value=True)
 
         for urutan, uid in enumerate(st.session_state.id_fb):
             if uid not in st.session_state.fb_conds: st.session_state.fb_conds[uid] = []
             
             with st.container(border=True):
-                st.markdown(f"**Lapisan Fallback {urutan+1}**")
+                st.markdown(f"**Tier Fallback ke-{urutan+1}**")
                 c1, c2, c3 = st.columns([1,1,1])
-                with c1: fb_kamus = st.selectbox("Gunakan Kamus:", pilihan_kamus, key=f"fbk_{uid}")
-                with c2: fb_ku = st.selectbox("Kunci Utama:", kolom_dinamis, key=f"fbku_{uid}")
-                with c3: fb_kk = st.selectbox("Kunci Kamus Utama:", dict_kamus[fb_kamus].columns, key=f"fbkk_{uid}")
+                with c1: fb_kamus = st.selectbox("Pilih Kamus:", pilihan_kamus, key=f"fbk_{uid}")
+                with c2: fb_ku = st.selectbox("Lookup Value Baru:", kolom_dinamis, key=f"fbku_{uid}")
+                with c3: fb_kk = st.selectbox("Table Array Baru:", dict_kamus[fb_kamus].columns, key=f"fbkk_{uid}")
                 
-                st.markdown("*Saringan Kamus Khusus Lapisan Ini:*")
-                logika_fb = st.radio("Logika Gabungan Filter:", ["Wajib Penuhi SEMUA (AND)", "Penuhi SALAH SATU (OR)"], key=f"fblog_{uid}", horizontal=True)
+                st.markdown("*Custom Filter untuk Kamus (Saring data kamus sebelum di-VLOOKUP):*")
+                logika_fb = st.radio("Logika Filter Kamus:", ["Wajib penuhi SEMUA (AND)", "Cukup penuhi SALAH SATU (OR)"], key=f"fblog_{uid}", horizontal=True)
                 
                 for c_uid in st.session_state.fb_conds[uid]:
                     c4, c5, c6, c7 = st.columns([3, 2, 3, 1])
-                    with c4: f_sk = st.selectbox("Filter Kolom Kamus:", ["(Tanpa Filter)"] + list(dict_kamus[fb_kamus].columns), key=f"fbsk_{uid}_{c_uid}")
-                    with c5: f_op = st.selectbox("Kondisi:", ["Sama Dengan", "Tidak Sama", "Mengandung", "TIDAK Mengandung", "Kosong", "Tidak Kosong"], key=f"fbso_{uid}_{c_uid}")
-                    with c6: f_val = st.text_input("Nilai Teks:", key=f"fbsv_{uid}_{c_uid}")
+                    with c4: f_sk = st.selectbox("Filter Kolom di Kamus:", ["(Tanpa Filter)"] + list(dict_kamus[fb_kamus].columns), key=f"fbsk_{uid}_{c_uid}")
+                    with c5: f_op = st.selectbox("Operator:", ["Sama Dengan (==)", "Tidak Sama (!=)", "Mengandung Teks", "TIDAK Mengandung Teks", "Kosong (Blank / #N/A)", "Tidak Kosong (Ada isinya)"], key=f"fbso_{uid}_{c_uid}")
+                    with c6: f_val = st.text_input("Value:", key=f"fbsv_{uid}_{c_uid}")
                     with c7: 
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.button("❌", key=f"fbx_c_{uid}_{c_uid}", on_click=hapus_fb_cond, args=(uid, c_uid))
                         
                 c_add, c_del = st.columns([2, 8])
-                with c_add: st.button("➕ Tambah Syarat Filter", key=f"add_c_{uid}", on_click=tambah_fb_cond, args=(uid,))
-                with c_del: st.button("🗑️ Hapus Lapisan Fallback Ini", key=f"fbx_{uid}", on_click=hapus_fb_layer, args=(uid,))
+                with c_add: st.button("➕ Tambah Custom Filter", key=f"add_c_{uid}", on_click=tambah_fb_cond, args=(uid,))
+                with c_del: st.button("🗑️ Hapus Tier Ini", key=f"fbx_{uid}", on_click=hapus_fb_layer, args=(uid,))
                 
-        st.button("➕ Tambah Lapisan Fallback Baru", key="btn_add_fb_layer", on_click=tambah_fb_layer)
+        st.button("➕ Tambah Tier Fallback Baru", key="btn_add_fb_layer", on_click=tambah_fb_layer)
 
-        st.markdown("**2. Pemisahan Tabel Akhir (Membelah sisa data menjadi 2 File):**")
-        pisah_t3_aktif = st.checkbox("Aktifkan Pemisahan Tabel 3", value=True)
+        st.markdown("**2. Splitter Tahap 3 (Pecah sisa data menjadi 2 output):**")
+        pisah_t3_aktif = st.checkbox("Aktifkan Splitter Akhir", value=True)
         if pisah_t3_aktif:
             c1, c2 = st.columns(2)
-            with c1: nama_t3a = st.text_input("Nama File (Ekstraksi):", value="Tabel 3A (Ekstraksi)", key="nama_t3a")
-            with c2: nama_t3b = st.text_input("Nama File (Sisa Akhir):", value="Tabel 3B (Sisa Akhir)", key="nama_t3b")
+            default_t3a = "Tabel 3A (Ekstraksi 1)" if not df_o.empty else "Tabel 2A (Ekstraksi 1)"
+            default_t3b = "Tabel 3B (Sisa Akhir)" if not df_o.empty else "Tabel 2B (Sisa Akhir)"
             
-            aksi_t3 = st.radio("Baris yang MEMENUHI syarat di bawah akan dimasukkan ke:", ["Tabel 3A", "Tabel 3B"], horizontal=True, key="aksi_t3")
-            logika_t3 = st.radio("Logika Penggabungan Syarat (Tahap 3):", ["Wajib Penuhi SEMUA Syarat (AND)", "Penuhi SALAH SATU Syarat (OR)"], horizontal=True, key="logika_t3")
+            with c1: nama_t3a = st.text_input("Simpan Hasil 1 sebagai:", value=default_t3a, key="nama_t3a")
+            with c2: nama_t3b = st.text_input("Simpan Sisa Akhirnya sebagai:", value=default_t3b, key="nama_t3b")
+            
+            aksi_t3 = st.radio("Routing Baris (Data yang memenuhi syarat di bawah akan diekstrak ke):", [nama_t3a, nama_t3b], horizontal=True, key="aksi_t3")
+            logika_t3 = st.radio("Logika Filter Gabungan (Tahap 3):", ["Wajib penuhi SEMUA syarat (AND)", "Cukup penuhi SALAH SATU (OR)"], horizontal=True, key="logika_t3")
             
             for uid in st.session_state.id_split3:
                 c1, c2, c3, c4 = st.columns([3, 2, 3, 1])
                 with c1: k_val = st.selectbox("Kolom:", kolom_dinamis, key=f"s3k_{uid}")
-                with c2: o_val = st.selectbox("Kondisi:", ["Sama Dengan", "Tidak Sama", "Mengandung", "TIDAK Mengandung", "Kosong", "Tidak Kosong"], key=f"s3o_{uid}")
+                with c2: o_val = st.selectbox("Operator:", ["Sama Dengan (==)", "Tidak Sama (!=)", "Mengandung Teks", "TIDAK Mengandung Teks", "Kosong (Blank / #N/A)", "Tidak Kosong (Ada isinya)"], key=f"s3o_{uid}")
                 with c3: 
-                    if o_val in ["Sama Dengan", "Tidak Sama"]:
+                    if o_val in ["Sama Dengan (==)", "Tidak Sama (!=)"]:
                         if k_val in df_u.columns:
-                            ops_u = ["(Ketik Manual)"] + list(df_u[k_val].dropna().astype(str).unique())
-                            pil_v = st.selectbox("Pilih Nilai:", ops_u, key=f"s3v_sel_{uid}")
-                            if pil_v == "(Ketik Manual)":
-                                st.text_input("Ketik Manual:", key=f"s3v_man_{uid}")
+                            ops_u = ["(Input Manual)"] + list(df_u[k_val].dropna().astype(str).unique())
+                            pil_v = st.selectbox("Value:", ops_u, key=f"s3v_sel_{uid}")
+                            if pil_v == "(Input Manual)":
+                                st.text_input("Input Manual:", key=f"s3v_man_{uid}")
                         else:
-                            st.text_input("Ketik Nilai (Kolom Baru):", key=f"s3v_man_{uid}")
-                    elif o_val not in ["Kosong", "Tidak Kosong"]:
-                        st.text_input("Nilai Teks:", key=f"s3v_{uid}")
+                            st.text_input("Value:", key=f"s3v_man_{uid}")
+                    elif o_val not in ["Kosong (Blank / #N/A)", "Tidak Kosong (Ada isinya)"]:
+                        st.text_input("Value Teks:", key=f"s3v_{uid}")
                 with c4: 
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.button("❌", key=f"s3x_{uid}", on_click=hapus_item, args=('id_split3', uid))
-            st.button("➕ Tambah Syarat (Tahap 3)", key="btn_add_split3", on_click=tambah_item, args=('id_split3',))
+            st.button("➕ Tambah Syarat Filter (Tahap 3)", key="btn_add_split3", on_click=tambah_item, args=('id_split3',))
     st.markdown("---")
 
     # ==========================================
     # UI TAHAP 4: MODIFIKASI SPESIFIK (ERASER)
     # ==========================================
-    st.subheader("🗑️ Tahap 4: Modifikasi Spesifik (Eraser Target)")
-    st.write("Kosongkan nilai kolom pada hasil tabel tertentu SETELAH semua proses di atas selesai.")
+    st.subheader("🗑️ Tahap 4: Clear Content (Eraser)")
+    st.write("Mengosongkan isi sel pada kolom tertentu secara spesifik SETELAH semua proses Splitter selesai.")
     
-    opsi_tabel_target = ["Semua Tabel"]
+    opsi_tabel_target = ["Semua File Output"]
     if 'nama_t1' in st.session_state: opsi_tabel_target.append(st.session_state.nama_t1)
     if 'nama_t2' in st.session_state: opsi_tabel_target.append(st.session_state.nama_t2)
     if 'nama_t3a' in st.session_state: opsi_tabel_target.append(st.session_state.nama_t3a)
@@ -317,9 +329,9 @@ if file_u and file_k:
 
     for uid in st.session_state.id_hapus:
         c1, c2, c3, c4 = st.columns([2,2,2,1])
-        with c1: hapus_lokasi = st.selectbox("Target Tabel:", opsi_tabel_target, key=f"hl_{uid}")
-        with c2: hapus_target = st.selectbox("Kosongkan Kolom:", kolom_dinamis, key=f"ht_{uid}")
-        with c3: hapus_syarat = st.text_input("JIKA sel berisi teks (Kosongkan jika hapus semua):", key=f"hs_{uid}")
+        with c1: hapus_lokasi = st.selectbox("Eksekusi di File:", opsi_tabel_target, key=f"hl_{uid}")
+        with c2: hapus_target = st.selectbox("Clear Content di Kolom:", kolom_dinamis, key=f"ht_{uid}")
+        with c3: hapus_syarat = st.text_input("Kondisi IF Contains (Biarkan kosong jika hapus semua baris):", key=f"hs_{uid}")
         with c4: 
             st.markdown("<br>", unsafe_allow_html=True)
             st.button("❌", key=f"hx_{uid}", on_click=hapus_item, args=('id_hapus', uid))
@@ -329,33 +341,33 @@ if file_u and file_k:
     # ==========================================
     # UI TAHAP 5: KOSMETIK & WARNA
     # ==========================================
-    st.subheader("🎨 Tahap 5: Kosmetik & Tata Letak Akhir")
-    with st.expander("Buka Pengaturan Kosmetik"):
+    st.subheader("🎨 Tahap 5: Cell Formatting & Layout")
+    with st.expander("Buka Pengaturan Formating Excel Akhir"):
         c1, c2 = st.columns(2)
         with c1: 
-            sort_kol = st.multiselect("Urutkan Data (Sorting) Berdasarkan:", kolom_dinamis)
-            sort_asc = st.radio("Arah Urutan:", ["A-Z", "Z-A"]) == "A-Z"
+            sort_kol = st.multiselect("Sort A-Z Berdasarkan Kolom:", kolom_dinamis)
+            sort_asc = st.radio("Order:", ["Ascending (A-Z)", "Descending (Z-A)"]) == "Ascending (A-Z)"
         with c2:
-            reindex_patokan = st.selectbox("Pindahkan semua kolom baru tepat ke sebelah KANAN dari:", ["(Biarkan di ujung kanan)"] + list(df_u.columns))
-            teks_mutlak = st.multiselect("Pertahankan format Teks (Mencegah Excel menghilangkan angka 0):", kolom_dinamis)
+            reindex_patokan = st.selectbox("Insert/Pindahkan semua kolom baru ke sebelah KANAN kolom ini:", ["(Abaikan, taruh di ujung kanan saja)"] + list(df_u.columns))
+            teks_mutlak = st.multiselect("Ubah tipe data menjadi Text mutlak (Mencegah Excel memakan angka '0' di NIP):", kolom_dinamis)
 
-        st.markdown("**Pengecatan Warna Dinamis Excel:**")
+        st.markdown("**Conditional Formatting (Fill Color):**")
         for uid in st.session_state.id_warna:
             c1, c2, c3, c4 = st.columns([3,2,2,1])
-            with c1: w_kol = st.multiselect("Pilih Kolom:", kolom_dinamis, key=f"wk_{uid}")
-            with c2: w_jud = st.color_picker("Warna Judul:", "#548235", key=f"wj_{uid}")
-            with c3: w_isi = st.color_picker("Warna Sel:", "#E2EFDA", key=f"ws_{uid}")
+            with c1: w_kol = st.multiselect("Target Kolom:", kolom_dinamis, key=f"wk_{uid}")
+            with c2: w_jud = st.color_picker("Header Color:", "#548235", key=f"wj_{uid}")
+            with c3: w_isi = st.color_picker("Cell Data Color:", "#E2EFDA", key=f"ws_{uid}")
             with c4: 
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.button("❌", key=f"wx_{uid}", on_click=hapus_item, args=('id_warna', uid))
-        st.button("➕ Tambah Aturan Warna", key="btn_add_warna", on_click=tambah_item, args=('id_warna',))
+        st.button("➕ Tambah Warna", key="btn_add_warna", on_click=tambah_item, args=('id_warna',))
 
     # ==========================================
     # MESIN EKSEKUSI PIPELINE
     # ==========================================
     st.markdown("---")
-    if st.button("🚀 EKSEKUSI SELURUH PIPELINE!", use_container_width=True):
-        with st.spinner("Mesin Pipeline sedang merakit tabel..."):
+    if st.button("🚀 EKSEKUSI PIPELINE SEKARANG!", use_container_width=True):
+        with st.spinner("Mesin pintar sedang membaca parameter Anda dan mengeksekusi VLOOKUP..."):
             try:
                 df_run = df_u.copy()
                 st.session_state.hasil_tabel = {}
@@ -367,12 +379,12 @@ if file_u and file_k:
                     if kol not in df.columns: return pd.Series(False, index=df.index)
                     k_str = clean_str(df[kol])
                     v_str = str(val).strip().upper()
-                    if op == "Kosong": return df[kol].isna() | (k_str == '') | (k_str == 'NAN')
-                    if op == "Tidak Kosong": return df[kol].notna() & (k_str != '') & (k_str != 'NAN')
-                    if op == "Sama Dengan": return k_str == v_str
-                    if op == "Tidak Sama": return k_str != v_str
-                    if op == "Mengandung": return k_str.str.contains(v_str, case=False, regex=False)
-                    if op == "TIDAK Mengandung": return ~k_str.str.contains(v_str, case=False, regex=False)
+                    if "Kosong (Blank" in op: return df[kol].isna() | (k_str == '') | (k_str == 'NAN')
+                    if "Tidak Kosong" in op: return df[kol].notna() & (k_str != '') & (k_str != 'NAN')
+                    if "Sama Dengan" in op: return k_str == v_str
+                    if "Tidak Sama" in op: return k_str != v_str
+                    if "TIDAK Mengandung" in op: return ~k_str.str.contains(v_str, case=False, regex=False)
+                    if "Mengandung" in op: return k_str.str.contains(v_str, case=False, regex=False)
                     return pd.Series(False, index=df.index)
 
                 # 0. HAPUS BARIS KOSONG TOTAL
@@ -387,7 +399,7 @@ if file_u and file_k:
                     tg = st.session_state.get(f"tg_{uid}", "Teks Baru")
                     if kg in df_run.columns and len(cg) > 0:
                         df_run[kg] = df_run[kg].astype(str)
-                        if tg == "Kosong (NaN/Blank)": df_run[kg] = df_run[kg].replace(cg, np.nan)
+                        if tg == "Dikosongkan": df_run[kg] = df_run[kg].replace(cg, np.nan)
                         else: df_run[kg] = df_run[kg].replace(cg, st.session_state.get(f"gg_{uid}", ""))
 
                 # 1.5. VLOOKUP AWAL & SPLIT 1
@@ -396,7 +408,7 @@ if file_u and file_k:
                     df_o[kunci_o_awal] = clean_str(df_o[kunci_o_awal])
                     dict_awal = df_o.drop_duplicates(subset=[kunci_o_awal]).set_index(kunci_o_awal)[target_o_awal].to_dict()
                     
-                    if mode_awal == "Buat Kolom Baru": df_run[nama_target_awal] = df_run[kunci_u_awal].map(dict_awal)
+                    if mode_awal == "Insert Kolom Baru": df_run[nama_target_awal] = df_run[kunci_u_awal].map(dict_awal)
                     else: df_run[nama_target_awal] = df_run[kunci_u_awal].map(dict_awal).fillna(df_run[nama_target_awal])
                         
                     if pisah_awal_aktif and nama_target_awal in df_run.columns:
@@ -412,33 +424,33 @@ if file_u and file_k:
                     
                     for t, conf in t2_map_kolom.items():
                         d_k = df_k_t2.drop_duplicates(subset=[t2_kk]).set_index(t2_kk)[t].to_dict()
-                        if conf['mode'] == "Buat Kolom Baru":
+                        if conf['mode'] == "Insert Kolom Baru":
                             df_run[conf['target']] = df_run[t2_ku].map(d_k)
                         else:
                             df_run[conf['target']] = df_run[t2_ku].map(d_k).fillna(df_run[conf['target']])
                         
                     if val_aktif:
                         vk, vn = clean_str(df_run[val_kiri]), clean_str(df_run[val_kanan])
-                        kondisi_v = (vk == vn) if val_op == "Sama Dengan (==)" else (vk != vn)
+                        kondisi_v = (vk == vn) if "Sama Persis" in val_op else (vk != vn)
                         df_run[val_hasil] = val_s
                         df_run.loc[kondisi_v, val_hasil] = val_b
 
                     if pisah_t2_aktif:
                         if len(st.session_state.id_split2) > 0:
-                            is_and = (logika_t2 == "Wajib Penuhi SEMUA Syarat (AND)")
+                            is_and = ("SEMUA" in logika_t2)
                             mask_t2 = pd.Series(True, index=df_run.index) if is_and else pd.Series(False, index=df_run.index)
                             
                             for uid in st.session_state.id_split2:
                                 k = st.session_state.get(f"s2k_{uid}", "")
                                 o = st.session_state.get(f"s2o_{uid}", "")
                                 
-                                if o in ["Sama Dengan", "Tidak Sama"]:
+                                if "Sama Dengan" in o or "Tidak Sama" in o:
                                     if k in df_u.columns:
                                         sel_v = st.session_state.get(f"s2v_sel_{uid}", "")
-                                        v = st.session_state.get(f"s2v_man_{uid}", "") if sel_v == "(Ketik Manual)" else sel_v
+                                        v = st.session_state.get(f"s2v_man_{uid}", "") if sel_v == "(Input Manual)" else sel_v
                                     else:
                                         v = st.session_state.get(f"s2v_man_{uid}", "")
-                                elif o in ["Kosong", "Tidak Kosong"]:
+                                elif "Kosong" in o:
                                     v = ""
                                 else:
                                     v = st.session_state.get(f"s2v_{uid}", "")
@@ -449,7 +461,7 @@ if file_u and file_k:
                             mask_t2 = pd.Series(True, index=df_run.index)
                             
                         aksi_t2 = st.session_state.get("aksi_t2", "")
-                        if "Dilempar ke Tahap 3" in aksi_t2:
+                        if "Lanjut ke Tahap 3" in aksi_t2:
                             st.session_state.hasil_tabel[nama_t2] = df_run[~mask_t2].copy() 
                             df_run = df_run[mask_t2].copy() 
                         else:
@@ -474,7 +486,7 @@ if file_u and file_k:
                             
                             cond_list = st.session_state.fb_conds.get(uid, [])
                             if len(cond_list) > 0:
-                                is_and_fb = (st.session_state.get(f"fblog_{uid}", "") == "Wajib Penuhi SEMUA (AND)")
+                                is_and_fb = ("SEMUA" in st.session_state.get(f"fblog_{uid}", ""))
                                 mask_fb = pd.Series(True, index=df_f.index) if is_and_fb else pd.Series(False, index=df_f.index)
                                 filter_aktif = False
                                 
@@ -494,25 +506,25 @@ if file_u and file_k:
                             try: d_dict = df_f.drop_duplicates(subset=[f_kk]).set_index(f_kk)[col_tarik_asli].to_dict()
                             except: d_dict = {}
                             
-                            mk = build_mask(df_run, target_fb, "Kosong", "")
+                            mk = build_mask(df_run, target_fb, "Kosong (Blank)", "")
                             df_run.loc[mk, target_fb] = df_run.loc[mk, f_ku].map(d_dict)
 
                     if pisah_t3_aktif:
                         if len(st.session_state.id_split3) > 0:
-                            is_and = (logika_t3 == "Wajib Penuhi SEMUA Syarat (AND)")
+                            is_and = ("SEMUA" in logika_t3)
                             mask_t3 = pd.Series(True, index=df_run.index) if is_and else pd.Series(False, index=df_run.index)
                             
                             for uid in st.session_state.id_split3:
                                 k = st.session_state.get(f"s3k_{uid}", "")
                                 o = st.session_state.get(f"s3o_{uid}", "")
                                 
-                                if o in ["Sama Dengan", "Tidak Sama"]:
+                                if "Sama Dengan" in o or "Tidak Sama" in o:
                                     if k in df_u.columns:
                                         sel_v = st.session_state.get(f"s3v_sel_{uid}", "")
-                                        v = st.session_state.get(f"s3v_man_{uid}", "") if sel_v == "(Ketik Manual)" else sel_v
+                                        v = st.session_state.get(f"s3v_man_{uid}", "") if sel_v == "(Input Manual)" else sel_v
                                     else:
                                         v = st.session_state.get(f"s3v_man_{uid}", "")
-                                elif o in ["Kosong", "Tidak Kosong"]:
+                                elif "Kosong" in o:
                                     v = ""
                                 else:
                                     v = st.session_state.get(f"s3v_{uid}", "")
@@ -522,8 +534,8 @@ if file_u and file_k:
                         else:
                             mask_t3 = pd.Series(True, index=df_run.index)
                             
-                        aksi_t3 = st.session_state.get("aksi_t3", "Tabel 3A")
-                        if aksi_t3 == "Tabel 3A":
+                        aksi_t3 = st.session_state.get("aksi_t3", "")
+                        if aksi_t3 == nama_t3a:
                             st.session_state.hasil_tabel[nama_t3a] = df_run[mask_t3].copy()
                             st.session_state.hasil_tabel[nama_t3b] = df_run[~mask_t3].copy()
                         else:
@@ -531,17 +543,17 @@ if file_u and file_k:
                             st.session_state.hasil_tabel[nama_t3b] = df_run[mask_t3].copy()
                         df_run = pd.DataFrame() 
                     else:
-                        st.session_state.hasil_tabel["Data Akhir"] = df_run
+                        st.session_state.hasil_tabel["Data Output Akhir"] = df_run
                         df_run = pd.DataFrame()
 
-                # 4. MODIFIKASI SPESIFIK / ERASER (SETELAH SEMUA TABEL TERBENTUK)
+                # 4. MODIFIKASI SPESIFIK / ERASER
                 for uid in st.session_state.id_hapus:
                     h_lokasi = st.session_state[f"hl_{uid}"]
                     h_targ = st.session_state[f"ht_{uid}"]
                     h_syar = st.session_state[f"hs_{uid}"].strip().upper()
                     
                     target_dfs = []
-                    if h_lokasi == "Semua Tabel": target_dfs = list(st.session_state.hasil_tabel.keys())
+                    if h_lokasi == "Pilih Semua File Hasil": target_dfs = list(st.session_state.hasil_tabel.keys())
                     elif h_lokasi in st.session_state.hasil_tabel: target_dfs = [h_lokasi]
                     
                     for t_name in target_dfs:
@@ -556,7 +568,7 @@ if file_u and file_k:
                 # 5. KOSMETIK (Re-index, Tipe Data, Sort)
                 for nama_tab, df_res in st.session_state.hasil_tabel.items():
                     if not df_res.empty:
-                        if reindex_patokan != "(Biarkan di ujung kanan)":
+                        if "(Abaikan" not in reindex_patokan:
                             cols = list(df_u.columns)
                             new_cols = [c for c in df_res.columns if c not in cols]
                             if reindex_patokan in cols:
@@ -579,13 +591,13 @@ if file_u and file_k:
 
             except Exception as e:
                 import traceback
-                st.error(f"❌ Terjadi kesalahan mesin: {e}. Detail: {traceback.format_exc()}")
+                st.error(f"❌ Terjadi kesalahan pada mesin. Detail error: {traceback.format_exc()}")
 
     # ==========================================
     # UNDUH HASIL
     # ==========================================
     if st.session_state.proses_selesai:
-        st.success("✅ Alur Pipa Data Selesai Dieksekusi!")
+        st.success("✅ Yey! Laporan Anda sudah selesai diproses. Silakan unduh file-nya di bawah ini.")
         st.markdown("---")
         
         def buat_excel(df):
@@ -608,7 +620,7 @@ if file_u and file_k:
         cols_dl = st.columns(len(st.session_state.hasil_tabel))
         for idx, (nama_file, data_tabel) in enumerate(st.session_state.hasil_tabel.items()):
             with cols_dl[idx]:
-                st.info(f"📁 **{nama_file}**\nBerisi {len(data_tabel)} baris")
-                st.download_button(label=f"⬇️ Unduh File", data=buat_excel(data_tabel), file_name=f"{nama_file}.xlsx", key=f"dl_{idx}")
+                st.info(f"📁 **{nama_file}**\nFile ini berisi {len(data_tabel)} baris data.")
+                st.download_button(label=f"⬇️ Unduh Excel", data=buat_excel(data_tabel), file_name=f"{nama_file}.xlsx", key=f"dl_{idx}")
 else:
-    st.info("👈 Silakan unggah minimal Tabel Utama dan Kamus Utama untuk memunculkan panel pengaturan.")
+    st.info("👈 Silakan upload minimal File Utama dan Kamus Utama untuk mulai mengatur proses data.")
