@@ -117,6 +117,8 @@ if file_utama is not None and file_kamus2 is not None:
                 df_k2['NIP'] = df_k2['NIP'].fillna('').astype(str).str.strip()
                 df_k2['K_Outlet'] = df_k2['K_Outlet'].fillna('').astype(str).str.strip()
                 df_k2['Outlet'] = df_k2['Outlet'].fillna('').astype(str).str.strip().str.upper()
+                if 'Kantor Cabang' in df_k2.columns:
+                    df_k2['Kantor Cabang'] = df_k2['Kantor Cabang'].fillna('').astype(str).str.strip().str.upper()
                 df_k2['Jabatan'] = df_k2['Jabatan'].fillna('').astype(str).str.strip().str.upper()
 
                 # =========================================================
@@ -138,7 +140,7 @@ if file_utama is not None and file_kamus2 is not None:
                     df_k1['ACCOUNT'] = df_k1['ACCOUNT'].fillna('').astype(str).str.strip()
                     kamus_1_rmcode = df_k1.drop_duplicates(subset=['ACCOUNT']).set_index('ACCOUNT')['RMCode'].to_dict()
                     df_u['RMCode'] = df_u['ACCOUNT'].map(kamus_1_rmcode)
-                
+                    
                 if 'SNAME' in df_u.columns:
                     cols = list(df_u.columns)
                     if 'RMCode' in cols:
@@ -184,35 +186,61 @@ if file_utama is not None and file_kamus2 is not None:
                     tabel_2_clean = pd.DataFrame()
 
                 # =========================================================
-                # PROSES 3: VLOOKUP BERSYARAT (CPS) & FALLBACK PADA TABEL 3
+                # PROSES 3: VLOOKUP BERSYARAT (5-TIER FALLBACK) PADA TABEL 3
                 # =========================================================
                 if not tabel_3.empty:
-                    df_k2_cps = df_k2[df_k2['Jabatan'] == 'CPS']
+                    # ---> PERUBAHAN: Penambahan saringan anti '#' <---
+                    df_k2_cps_exact = df_k2[df_k2['Jabatan'] == 'CPS']
                     
-                    kamus_2_cps_kout = df_k2_cps.drop_duplicates(subset=['K_Outlet']).set_index('K_Outlet')['RMCode'].to_dict()
-                    kamus_2_cps_outlet = df_k2_cps.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
+                    # Logika: Mengandung CPS DAN bukan persis "CPS" DAN TIDAK mengandung "#"
+                    df_k2_cps_contains = df_k2[
+                        df_k2['Jabatan'].str.contains('CPS', case=False, na=False) & 
+                        (df_k2['Jabatan'] != 'CPS') & 
+                        (~df_k2['Jabatan'].str.contains('#', na=False))
+                    ]
+                    # ---> BATAS PERUBAHAN <---
+                    
+                    kamus_branch_kout_cps = df_k2_cps_exact.drop_duplicates(subset=['K_Outlet']).set_index('K_Outlet')['RMCode'].to_dict()
+                    kamus_kc_outlet_cps = df_k2_cps_exact.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
+                    kamus_kc_outlet_smecps = df_k2_cps_contains.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
+                    kamus_kc_kancab_cps = df_k2_cps_exact.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
+                    kamus_kc_kancab_smecps = df_k2_cps_contains.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
                     
                     tabel_3['BRANCH'] = tabel_3['BRANCH'].fillna('').astype(str).str.strip()
-                    tabel_3['RMCode'] = tabel_3['BRANCH'].map(kamus_2_cps_kout)
-                    
                     tabel_3['KC'] = tabel_3['KC'].fillna('').astype(str).str.strip().str.upper()
-                    mask_fallback = tabel_3['RMCode'].isna() | (tabel_3['RMCode'].astype(str).str.strip() == '') | (tabel_3['RMCode'].astype(str).str.strip().str.lower() == 'nan')
-                    tabel_3.loc[mask_fallback, 'RMCode'] = tabel_3.loc[mask_fallback, 'KC'].map(kamus_2_cps_outlet)
                     
-                    # ---> PERUBAHAN LOGIKA KPP DI SINI <---
+                    def cek_sel_kosong(df):
+                        return df['RMCode'].isna() | (df['RMCode'].astype(str).str.strip() == '') | (df['RMCode'].astype(str).str.strip().str.lower() == 'nan')
+
+                    # 1. Prioritas 1: Kunci BRANCH -> K_Outlet (Jabatan PERSIS "CPS")
+                    tabel_3['RMCode'] = tabel_3['BRANCH'].map(kamus_branch_kout_cps)
+                    
+                    # 2. Prioritas 2: Kunci KC -> Outlet (Jabatan PERSIS "CPS")
+                    mask_kosong = cek_sel_kosong(tabel_3)
+                    tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_outlet_cps)
+
+                    # 3. Prioritas 3: Kunci KC -> Outlet (Jabatan MENGANDUNG "CPS" TAPI BUKAN #)
+                    mask_kosong = cek_sel_kosong(tabel_3)
+                    tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_outlet_smecps)
+
+                    # 4. Prioritas 4: Kunci KC -> Kantor Cabang (Jabatan PERSIS "CPS")
+                    mask_kosong = cek_sel_kosong(tabel_3)
+                    tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_kancab_cps)
+
+                    # 5. Prioritas 5: Kunci KC -> Kantor Cabang (Jabatan MENGANDUNG "CPS" TAPI BUKAN #)
+                    mask_kosong = cek_sel_kosong(tabel_3)
+                    tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_kancab_smecps)
+
                     if 'KONVERSI KPP' in tabel_3.columns:
                         kpp_str = tabel_3['KONVERSI KPP'].fillna('').astype(str).str.strip().str.lower()
-                        # Kondisi: Bernilai TRUE jika isinya BUKAN "konversi konsumer"
                         mask_bukan_konversi = (kpp_str != 'konversi konsumer')
                     else:
-                        # Jika kolom anehnya tidak ada, lempar semua ke tabel 3B
                         mask_bukan_konversi = pd.Series(True, index=tabel_3.index)
                         
                     tabel_3b = tabel_3[mask_bukan_konversi].copy()
                     tabel_3a = tabel_3[~mask_bukan_konversi].copy()
                     
                     tabel_3b['RMCode'] = np.nan
-                    # ---> BATAS PERUBAHAN <---
                 else:
                     tabel_3a = pd.DataFrame()
                     tabel_3b = pd.DataFrame()
