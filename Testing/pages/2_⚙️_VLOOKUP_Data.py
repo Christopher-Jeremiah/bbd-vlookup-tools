@@ -108,9 +108,18 @@ if file_utama is not None and file_kamus2 is not None:
                 if 'TGL REAL' in df_u.columns:
                     df_u['TGL REAL'] = pd.to_datetime(df_u['TGL REAL'], errors='coerce').dt.strftime('%d-%m-%Y').fillna('')
 
+                # =========================================================
+                # PERUBAHAN: Menggunakan GP1PDT sebagai pembersih Grand Total
+                # =========================================================
+                if 'GP1PDT' in df_u.columns:
+                    df_u['GP1PDT'] = df_u['GP1PDT'].fillna('').astype(str).str.strip()
+                    # Buang baris yang GP1PDT-nya kosong atau ada kata 'total'
+                    df_u = df_u[(df_u['GP1PDT'] != '') & (df_u['GP1PDT'].str.lower() != 'nan') & (~df_u['GP1PDT'].str.lower().str.contains('total'))]
+
                 if 'NIP RM' in df_u.columns:
+                    # NIP RM tetap dibersihkan format spasinya, TAPI TIDAK ADA LAGI baris yang dihapus
                     df_u['NIP RM'] = df_u['NIP RM'].fillna('').astype(str).str.strip()
-                    df_u = df_u[(df_u['NIP RM'] != '') & (df_u['NIP RM'].str.lower() != 'nan')]
+                # =========================================================
                 
                 df_u['ACCOUNT'] = df_u['ACCOUNT'].fillna('').astype(str).str.strip()
                 
@@ -165,6 +174,8 @@ if file_utama is not None and file_kamus2 is not None:
                     
                     kamus_2_rmcode = df_k2.drop_duplicates(subset=['NIP']).set_index('NIP')['RMCode'].to_dict()
                     mask_cek_0 = tabel_2['<<cek>>'] == '0'
+                    
+                    tabel_2['RMCode'] = tabel_2['RMCode'].astype(object) # FIX PANDAS WARNING
                     tabel_2.loc[mask_cek_0, 'RMCode'] = tabel_2.loc[mask_cek_0, 'NIP RM'].map(kamus_2_rmcode)
                     
                     cols_t2 = list(tabel_2.columns)
@@ -189,16 +200,13 @@ if file_utama is not None and file_kamus2 is not None:
                 # PROSES 3: VLOOKUP BERSYARAT (5-TIER FALLBACK) PADA TABEL 3
                 # =========================================================
                 if not tabel_3.empty:
-                    # ---> PERUBAHAN: Penambahan saringan anti '#' <---
                     df_k2_cps_exact = df_k2[df_k2['Jabatan'] == 'CPS']
                     
-                    # Logika: Mengandung CPS DAN bukan persis "CPS" DAN TIDAK mengandung "#"
                     df_k2_cps_contains = df_k2[
                         df_k2['Jabatan'].str.contains('CPS', case=False, na=False) & 
                         (df_k2['Jabatan'] != 'CPS') & 
                         (~df_k2['Jabatan'].str.contains('#', na=False))
                     ]
-                    # ---> BATAS PERUBAHAN <---
                     
                     kamus_branch_kout_cps = df_k2_cps_exact.drop_duplicates(subset=['K_Outlet']).set_index('K_Outlet')['RMCode'].to_dict()
                     kamus_kc_outlet_cps = df_k2_cps_exact.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
@@ -212,22 +220,17 @@ if file_utama is not None and file_kamus2 is not None:
                     def cek_sel_kosong(df):
                         return df['RMCode'].isna() | (df['RMCode'].astype(str).str.strip() == '') | (df['RMCode'].astype(str).str.strip().str.lower() == 'nan')
 
-                    # 1. Prioritas 1: Kunci BRANCH -> K_Outlet (Jabatan PERSIS "CPS")
                     tabel_3['RMCode'] = tabel_3['BRANCH'].map(kamus_branch_kout_cps)
                     
-                    # 2. Prioritas 2: Kunci KC -> Outlet (Jabatan PERSIS "CPS")
                     mask_kosong = cek_sel_kosong(tabel_3)
                     tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_outlet_cps)
 
-                    # 3. Prioritas 3: Kunci KC -> Outlet (Jabatan MENGANDUNG "CPS" TAPI BUKAN #)
                     mask_kosong = cek_sel_kosong(tabel_3)
                     tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_outlet_smecps)
 
-                    # 4. Prioritas 4: Kunci KC -> Kantor Cabang (Jabatan PERSIS "CPS")
                     mask_kosong = cek_sel_kosong(tabel_3)
                     tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_kancab_cps)
 
-                    # 5. Prioritas 5: Kunci KC -> Kantor Cabang (Jabatan MENGANDUNG "CPS" TAPI BUKAN #)
                     mask_kosong = cek_sel_kosong(tabel_3)
                     tabel_3.loc[mask_kosong, 'RMCode'] = tabel_3.loc[mask_kosong, 'KC'].map(kamus_kc_kancab_smecps)
 
@@ -262,7 +265,8 @@ if file_utama is not None and file_kamus2 is not None:
                 st.session_state.proses_selesai = True
                 
             except Exception as e:
-                st.error(f"❌ Terjadi kesalahan mesin: {e}")
+                import traceback
+                st.error(f"❌ Terjadi kesalahan mesin: {e}. Detail: {traceback.format_exc()}")
 
 # ==========================================
 # 3. AREA UNDUH DATA (ADAPTIF UI)
