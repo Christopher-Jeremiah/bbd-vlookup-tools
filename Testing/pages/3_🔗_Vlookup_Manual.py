@@ -5,7 +5,7 @@ import numpy as np
 from openpyxl.styles import PatternFill
 
 st.set_page_config(page_title="Ultimate Data Pipeline", layout="wide")
-st.title("📊 Hub Otomatisasi BBD & VLOOKUP")
+st.title("📊 Hub Otomatisasi VLOOKUP & Pemrosesan Data")
 st.write("Jalankan pembersihan data, VLOOKUP berantai, N-Tier Fallback, dan pemecahan file Excel (Splitter) secara instan tanpa perlu merakit rumus manual.")
 
 # ==========================================
@@ -56,6 +56,30 @@ def hapus_fb_cond(layer_uid, cond_uid):
 # ==========================================
 # 1. PINTU MASUK FILE (3 KOLOM)
 # ==========================================
+
+# MANTRA CACHE: Baca Excel/CSV sekali saja, lalu simpan di RAM agar aplikasi secepat kilat!
+@st.cache_data
+def baca_dan_rapihan_data(file_content, file_name, header):
+    if not file_content: return pd.DataFrame()
+    
+    # 1. Baca File
+    if file_name.endswith('.csv'): 
+        df = pd.read_csv(io.BytesIO(file_content), header=header, dtype=str)
+    else: 
+        df = pd.read_excel(io.BytesIO(file_content), header=header, dtype=str)
+        
+    # 2. Rapikan Tanggal
+    if df.empty: return df
+    kr = []
+    for col in df.columns:
+        cs = str(col)
+        if ' 00:00:00' in cs:
+            try: kr.append(pd.to_datetime(cs).strftime('%d-%b'))
+            except: kr.append(cs)
+        else: kr.append(cs)
+    df.columns = kr
+    return df
+
 st.markdown("### 📥 Langkah 1: Upload File Base & Referensi")
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -65,45 +89,25 @@ with col2:
     file_k = st.file_uploader("2. File Kamus Utama (Table Array) [Wajib]", type=["xlsx", "csv"])
     head_k = st.number_input("Mulai dari Baris Header:", 0, step=1, key="h2") if file_k else 0
 with col3:
-    file_o = st.file_uploader("3. File Kamus H-1 (Opsional)", type=["xlsx", "csv"])
+    file_o = st.file_uploader("3. File Referensi Tambahan / Historis (Opsional)", type=["xlsx", "csv"])
     head_o = st.number_input("Mulai dari Baris Header:", 0, step=1, key="h3") if file_o else 0
 
 if file_u and file_k:
     try:
-        def baca(f, h):
-            if not f: return pd.DataFrame()
-            if f.name.endswith('.csv'): return pd.read_csv(f, header=h, dtype=str)
-            return pd.read_excel(pd.ExcelFile(f), header=h, dtype=str)
-
-        df_u = baca(file_u, head_u)
-        df_k = baca(file_k, head_k)
-        df_o = baca(file_o, head_o) if file_o else pd.DataFrame()
-        
-        def rapi_tgl(df):
-            if df.empty: return df
-            kr = []
-            for col in df.columns:
-                cs = str(col)
-                if ' 00:00:00' in cs:
-                    try: kr.append(pd.to_datetime(cs).strftime('%d-%b'))
-                    except: kr.append(cs)
-                else: kr.append(cs)
-            df.columns = kr
-            return df
-            
-        df_u = rapi_tgl(df_u)
-        df_k = rapi_tgl(df_k)
-        df_o = rapi_tgl(df_o)
+        # Eksekusi fungsi cache (Mesin hanya akan loading lama di tahap ini saja)
+        df_u = baca_dan_rapihan_data(file_u.getvalue(), file_u.name, head_u)
+        df_k = baca_dan_rapihan_data(file_k.getvalue(), file_k.name, head_k)
+        df_o = baca_dan_rapihan_data(file_o.getvalue(), file_o.name, head_o) if file_o else pd.DataFrame()
         
         kolom_dinamis = list(df_u.columns)
         dict_kamus = {"Kamus Utama": df_k}
-        if not df_o.empty: dict_kamus["Kamus H-1 (Opsional)"] = df_o
+        if not df_o.empty: dict_kamus["Referensi Tambahan"] = df_o
         pilihan_kamus = list(dict_kamus.keys())
         
     except Exception as e:
         st.error(f"Gagal membaca file. Pastikan baris judul (header) sudah benar. Pesan error: {e}")
         st.stop()
-
+        
     st.markdown("---")
 
     # ==========================================
@@ -134,15 +138,15 @@ if file_u and file_k:
     # ==========================================
     # UI TAHAP 1.5: VLOOKUP AWAL
     # ==========================================
-    st.subheader("🕰️ Tahap 1.5: VLOOKUP Laporan H-1 (Opsional)")
+    st.subheader("🕰️ Tahap 1.5: VLOOKUP Referensi Tambahan (Opsional)")
     tarik_awal_aktif = False
     
     if not df_o.empty:
-        tarik_awal_aktif = st.checkbox("Aktifkan VLOOKUP ke Kamus H-1", value=True)
+        tarik_awal_aktif = st.checkbox("Aktifkan VLOOKUP ke Referensi Tambahan", value=True)
         if tarik_awal_aktif:
             c1, c2, c3 = st.columns(3)
             with c1: kunci_u_awal = st.selectbox("Lookup Value (Kunci di File Utama):", kolom_dinamis, key="ku_awal")
-            with c2: kunci_o_awal = st.selectbox("Table Array (Kunci di Kamus H-1):", df_o.columns, key="ko_awal")
+            with c2: kunci_o_awal = st.selectbox("Table Array (Kunci di Referensi Tambahan):", df_o.columns, key="ko_awal")
             with c3: target_o_awal = st.selectbox("Return Value (Kolom yang ditarik):", df_o.columns, key="to_awal")
             
             c4, c5 = st.columns(2)
@@ -158,9 +162,9 @@ if file_u and file_k:
             st.markdown("**Splitter Tahap 1:**")
             pisah_awal_aktif = st.checkbox("Extract (Pisahkan) baris yang hasil VLOOKUP-nya 'Matched' ke file Excel terpisah", value=True)
             if pisah_awal_aktif:
-                nama_t1 = st.text_input("Simpan sebagai File/Tabel bernama:", value="Tabel 1 (Match H-1)", key="nama_t1")
+                nama_t1 = st.text_input("Simpan sebagai File/Tabel bernama:", value="Tabel 1 (Match Referensi Tambahan)", key="nama_t1")
     else:
-        st.info("Upload File Kamus H-1 di Langkah 1 untuk membuka menu ini.")
+        st.info("Upload File Referensi Tambahan di Langkah 1 untuk membuka menu ini.")
     st.markdown("---")
 
     # ==========================================
@@ -190,7 +194,7 @@ if file_u and file_k:
                     nama_t2_t = st.selectbox(f"Kolom yang di-Overwrite:", kolom_dinamis, key=f"t2_s_{t}")
                     t2_map_kolom[t] = {"mode": mode_t2, "target": nama_t2_t}
 
-        st.markdown("**C. Cross-Validation (Buat kolom cek parameter. Misal: Cek jika Cabang == K_Outlet)**")
+        st.markdown("**C. Cross-Validation (Buat kolom cek parameter. Misal: Cek jika Nama Area di laporan sama dengan di kamus)**")
         val_aktif = st.checkbox("Aktifkan Cross-Validation")
         if val_aktif:
             c1, c2, c3 = st.columns(3)
@@ -349,7 +353,7 @@ if file_u and file_k:
             sort_asc = st.radio("Order:", ["Ascending (A-Z)", "Descending (Z-A)"]) == "Ascending (A-Z)"
         with c2:
             reindex_patokan = st.selectbox("Insert/Pindahkan semua kolom baru ke sebelah KANAN kolom ini:", ["(Abaikan, taruh di ujung kanan saja)"] + list(df_u.columns))
-            teks_mutlak = st.multiselect("Ubah tipe data menjadi Text mutlak (Mencegah Excel memakan angka '0' di NIP):", kolom_dinamis)
+            teks_mutlak = st.multiselect("Ubah tipe data menjadi Text mutlak (Mencegah Excel memakan angka '0'):", kolom_dinamis)
 
         st.markdown("**Conditional Formatting (Fill Color):**")
         for uid in st.session_state.id_warna:
@@ -399,7 +403,7 @@ if file_u and file_k:
                     tg = st.session_state.get(f"tg_{uid}", "Teks Baru")
                     if kg in df_run.columns and len(cg) > 0:
                         df_run[kg] = df_run[kg].astype(str)
-                        if tg == "Dikosongkan": df_run[kg] = df_run[kg].replace(cg, np.nan)
+                        if tg == "Clear Content (#N/A)": df_run[kg] = df_run[kg].replace(cg, np.nan)
                         else: df_run[kg] = df_run[kg].replace(cg, st.session_state.get(f"gg_{uid}", ""))
 
                 # 1.5. VLOOKUP AWAL & SPLIT 1
@@ -461,7 +465,7 @@ if file_u and file_k:
                             mask_t2 = pd.Series(True, index=df_run.index)
                             
                         aksi_t2 = st.session_state.get("aksi_t2", "")
-                        if "Lanjut ke Tahap 3" in aksi_t2:
+                        if "Dilempar ke Tahap 3" in aksi_t2:
                             st.session_state.hasil_tabel[nama_t2] = df_run[~mask_t2].copy() 
                             df_run = df_run[mask_t2].copy() 
                         else:
@@ -553,7 +557,7 @@ if file_u and file_k:
                     h_syar = st.session_state[f"hs_{uid}"].strip().upper()
                     
                     target_dfs = []
-                    if h_lokasi == "Pilih Semua File Hasil": target_dfs = list(st.session_state.hasil_tabel.keys())
+                    if h_lokasi == "Semua File Output": target_dfs = list(st.session_state.hasil_tabel.keys())
                     elif h_lokasi in st.session_state.hasil_tabel: target_dfs = [h_lokasi]
                     
                     for t_name in target_dfs:
@@ -597,7 +601,11 @@ if file_u and file_k:
     # UNDUH HASIL
     # ==========================================
     if st.session_state.proses_selesai:
-        st.success("✅ Yey! Laporan Anda sudah selesai diproses. Silakan unduh file-nya di bawah ini.")
+        # PELINDUNG 1: Jika tidak ada pemecahan tabel yang aktif
+        if len(st.session_state.hasil_tabel) == 0:
+            st.session_state.hasil_tabel["Data Output Akhir"] = df_run
+
+        st.success("✅ Yey! Data Anda sudah selesai diproses. Silakan unduh file-nya di bawah ini.")
         st.markdown("---")
         
         def buat_excel(df):
@@ -617,10 +625,13 @@ if file_u and file_k:
                                 for r in range(2, len(df) + 2): ws.cell(row=r, column=idx_w).fill = ci
             return b.getvalue()
             
-        cols_dl = st.columns(len(st.session_state.hasil_tabel))
-        for idx, (nama_file, data_tabel) in enumerate(st.session_state.hasil_tabel.items()):
-            with cols_dl[idx]:
-                st.info(f"📁 **{nama_file}**\nFile ini berisi {len(data_tabel)} baris data.")
-                st.download_button(label=f"⬇️ Unduh Excel", data=buat_excel(data_tabel), file_name=f"{nama_file}.xlsx", key=f"dl_{idx}")
+        # PELINDUNG 2: Keamanan pembuatan kolom unduh
+        jumlah_tabel = len(st.session_state.hasil_tabel)
+        if jumlah_tabel > 0:
+            cols_dl = st.columns(jumlah_tabel)
+            for idx, (nama_file, data_tabel) in enumerate(st.session_state.hasil_tabel.items()):
+                with cols_dl[idx]:
+                    st.info(f"📁 **{nama_file}**\nFile ini berisi {len(data_tabel)} baris data.")
+                    st.download_button(label=f"⬇️ Unduh Excel", data=buat_excel(data_tabel), file_name=f"{nama_file}.xlsx", key=f"dl_{idx}")
 else:
     st.info("👈 Silakan upload minimal File Utama dan Kamus Utama untuk mulai mengatur proses data.")
