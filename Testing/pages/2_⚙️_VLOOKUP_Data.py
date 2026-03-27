@@ -5,7 +5,7 @@ import io
 
 st.set_page_config(page_title="Otomatisasi BBD", page_icon="⚙️", layout="wide")
 st.title("⚙️ Otomatisasi BBD")
-st.write("Aplikasi ini dirancang khusus untuk memproses data BBD. Anda wajib mengunggah File Utama dan Kamus 2 (List NIP). Kamus 1 (BBD Kemarin) bersifat opsional.")
+st.write("Aplikasi ini dirancang khusus untuk memproses data BBD. Anda wajib mengunggah File Utama dan Kamus Utama (List NIP). Kamus Opsional (BBD Kemarin) bersifat opsional.")
 
 # ==========================================
 # 0. INISIALISASI BRANKAS MEMORI
@@ -20,16 +20,16 @@ if 'tabel_3a' not in st.session_state:
     st.session_state.tabel_3a = None
 if 'tabel_3b' not in st.session_state:
     st.session_state.tabel_3b = None
-if 'pakai_kamus_1' not in st.session_state:
-    st.session_state.pakai_kamus_1 = False
+if 'pakai_kamus_opsional' not in st.session_state:
+    st.session_state.pakai_kamus_opsional = False
 
 # ==========================================
 # 1. PINTU MASUK DATA & PENGATURAN UI DINAMIS
 # ==========================================
 st.sidebar.header("📂 Upload File")
 file_utama = st.sidebar.file_uploader("1. File Utama (BBD Hari Ini) *[Wajib]*", type=["xlsx", "csv"])
-file_kamus1 = st.sidebar.file_uploader("2. Kamus 1 (BBD Kemarin) *[Opsional]*", type=["xlsx", "csv"])
-file_kamus2 = st.sidebar.file_uploader("3. Kamus 2 (List NIP) *[Wajib]*", type=["xlsx", "csv"])
+file_kamus_utama = st.sidebar.file_uploader("2. Kamus Utama (List NIP) *[Wajib]*", type=["xlsx", "csv"])
+file_kamus_opsional = st.sidebar.file_uploader("3. Kamus Opsional (BBD Kemarin) *[Opsional]*", type=["xlsx", "csv"])
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Pengaturan Pembacaan")
@@ -45,27 +45,27 @@ else:
     sheet_u = 0
     header_u = 1
 
-if file_kamus1 is not None:
-    if file_kamus1.name.endswith('.xlsx'):
-        xls_k1 = pd.ExcelFile(file_kamus1)
-        sheet_k1 = st.sidebar.selectbox("Kamus 1: Pilih Sheet", xls_k1.sheet_names)
+if file_kamus_utama is not None:
+    if file_kamus_utama.name.endswith('.xlsx'):
+        xls_ku = pd.ExcelFile(file_kamus_utama)
+        sheet_k_utama = st.sidebar.selectbox("Kamus Utama: Pilih Sheet", xls_ku.sheet_names)
     else:
-        sheet_k1 = 0
-    header_k1 = st.sidebar.number_input("Kamus 1: Baris Header (Mulai 0)", min_value=0, value=1, step=1)
+        sheet_k_utama = 0
+    header_k_utama = st.sidebar.number_input("Kamus Utama: Baris Header (Mulai 0)", min_value=0, value=0, step=1)
 else:
-    sheet_k1 = 0
-    header_k1 = 1
+    sheet_k_utama = 0
+    header_k_utama = 0
 
-if file_kamus2 is not None:
-    if file_kamus2.name.endswith('.xlsx'):
-        xls_k2 = pd.ExcelFile(file_kamus2)
-        sheet_k2 = st.sidebar.selectbox("Kamus 2: Pilih Sheet", xls_k2.sheet_names)
+if file_kamus_opsional is not None:
+    if file_kamus_opsional.name.endswith('.xlsx'):
+        xls_ko = pd.ExcelFile(file_kamus_opsional)
+        sheet_k_opsional = st.sidebar.selectbox("Kamus Opsional: Pilih Sheet", xls_ko.sheet_names)
     else:
-        sheet_k2 = 0
-    header_k2 = st.sidebar.number_input("Kamus 2: Baris Header (Mulai 0)", min_value=0, value=0, step=1)
+        sheet_k_opsional = 0
+    header_k_opsional = st.sidebar.number_input("Kamus Opsional: Baris Header (Mulai 0)", min_value=0, value=1, step=1)
 else:
-    sheet_k2 = 0
-    header_k2 = 0
+    sheet_k_opsional = 0
+    header_k_opsional = 1
 
 def baca_file(file, sheet, header):
     if file.name.endswith('.csv'):
@@ -76,14 +76,14 @@ def baca_file(file, sheet, header):
 # ==========================================
 # 2. MESIN PENGOLAHAN (CASCADING ETL)
 # ==========================================
-if file_utama is not None and file_kamus2 is not None:
+if file_utama is not None and file_kamus_utama is not None:
     if st.button("🚀 Eksekusi Proses Data Sekarang!", use_container_width=True):
         with st.spinner("Mesin sedang memproses..."):
             try:
-                st.session_state.pakai_kamus_1 = (file_kamus1 is not None)
+                st.session_state.pakai_kamus_opsional = (file_kamus_opsional is not None)
                 
                 df_u = baca_file(file_utama, sheet_u, header_u)
-                df_k2 = baca_file(file_kamus2, sheet_k2, header_k2)
+                df_k_utama = baca_file(file_kamus_utama, sheet_k_utama, header_k_utama)
                 
                 def perbaiki_judul_tanggal(df):
                     kolom_rapi = []
@@ -109,26 +109,23 @@ if file_utama is not None and file_kamus2 is not None:
                     df_u['TGL REAL'] = pd.to_datetime(df_u['TGL REAL'], errors='coerce').dt.strftime('%d-%m-%Y').fillna('')
 
                 # =========================================================
-                # PERUBAHAN: Menggunakan GP1PDT sebagai pembersih Grand Total
+                # Pembersihan Grand Total Menggunakan GP1PDT
                 # =========================================================
                 if 'GP1PDT' in df_u.columns:
                     df_u['GP1PDT'] = df_u['GP1PDT'].fillna('').astype(str).str.strip()
-                    # Buang baris yang GP1PDT-nya kosong atau ada kata 'total'
                     df_u = df_u[(df_u['GP1PDT'] != '') & (df_u['GP1PDT'].str.lower() != 'nan') & (~df_u['GP1PDT'].str.lower().str.contains('total'))]
 
                 if 'NIP RM' in df_u.columns:
-                    # NIP RM tetap dibersihkan format spasinya, TAPI TIDAK ADA LAGI baris yang dihapus
                     df_u['NIP RM'] = df_u['NIP RM'].fillna('').astype(str).str.strip()
-                # =========================================================
                 
                 df_u['ACCOUNT'] = df_u['ACCOUNT'].fillna('').astype(str).str.strip()
                 
-                df_k2['NIP'] = df_k2['NIP'].fillna('').astype(str).str.strip()
-                df_k2['K_Outlet'] = df_k2['K_Outlet'].fillna('').astype(str).str.strip()
-                df_k2['Outlet'] = df_k2['Outlet'].fillna('').astype(str).str.strip().str.upper()
-                if 'Kantor Cabang' in df_k2.columns:
-                    df_k2['Kantor Cabang'] = df_k2['Kantor Cabang'].fillna('').astype(str).str.strip().str.upper()
-                df_k2['Jabatan'] = df_k2['Jabatan'].fillna('').astype(str).str.strip().str.upper()
+                df_k_utama['NIP'] = df_k_utama['NIP'].fillna('').astype(str).str.strip()
+                df_k_utama['K_Outlet'] = df_k_utama['K_Outlet'].fillna('').astype(str).str.strip()
+                df_k_utama['Outlet'] = df_k_utama['Outlet'].fillna('').astype(str).str.strip().str.upper()
+                if 'Kantor Cabang' in df_k_utama.columns:
+                    df_k_utama['Kantor Cabang'] = df_k_utama['Kantor Cabang'].fillna('').astype(str).str.strip().str.upper()
+                df_k_utama['Jabatan'] = df_k_utama['Jabatan'].fillna('').astype(str).str.strip().str.upper()
 
                 # =========================================================
                 # PROSES 1: MENGGUNAKAN DATA KEMARIN (JIKA ADA)
@@ -144,10 +141,10 @@ if file_utama is not None and file_kamus2 is not None:
                 if 'RMCode' not in df_u.columns:
                     df_u['RMCode'] = np.nan
                 
-                if st.session_state.pakai_kamus_1:
-                    df_k1 = baca_file(file_kamus1, sheet_k1, header_k1)
-                    df_k1['ACCOUNT'] = df_k1['ACCOUNT'].fillna('').astype(str).str.strip()
-                    kamus_1_rmcode = df_k1.drop_duplicates(subset=['ACCOUNT']).set_index('ACCOUNT')['RMCode'].to_dict()
+                if st.session_state.pakai_kamus_opsional:
+                    df_k_opsional = baca_file(file_kamus_opsional, sheet_k_opsional, header_k_opsional)
+                    df_k_opsional['ACCOUNT'] = df_k_opsional['ACCOUNT'].fillna('').astype(str).str.strip()
+                    kamus_1_rmcode = df_k_opsional.drop_duplicates(subset=['ACCOUNT']).set_index('ACCOUNT')['RMCode'].to_dict()
                     df_u['RMCode'] = df_u['ACCOUNT'].map(kamus_1_rmcode)
                     
                 if 'SNAME' in df_u.columns:
@@ -166,13 +163,13 @@ if file_utama is not None and file_kamus2 is not None:
                 # PROSES 2: VALIDASI NIP NORMAL PADA TABEL 2
                 # =========================================================
                 if not tabel_2.empty:
-                    kamus_2_kout = df_k2.drop_duplicates(subset=['NIP']).set_index('NIP')['K_Outlet'].to_dict()
+                    kamus_2_kout = df_k_utama.drop_duplicates(subset=['NIP']).set_index('NIP')['K_Outlet'].to_dict()
                     tabel_2['K_Out by NIP'] = tabel_2['NIP RM'].map(kamus_2_kout).fillna('')
                     
                     tabel_2['BRANCH'] = tabel_2['BRANCH'].fillna('').astype(str).str.strip()
                     tabel_2['<<cek>>'] = np.where(tabel_2['K_Out by NIP'] == tabel_2['BRANCH'], '0', '1')
                     
-                    kamus_2_rmcode = df_k2.drop_duplicates(subset=['NIP']).set_index('NIP')['RMCode'].to_dict()
+                    kamus_2_rmcode = df_k_utama.drop_duplicates(subset=['NIP']).set_index('NIP')['RMCode'].to_dict()
                     mask_cek_0 = tabel_2['<<cek>>'] == '0'
                     
                     tabel_2['RMCode'] = tabel_2['RMCode'].astype(object) # FIX PANDAS WARNING
@@ -200,19 +197,19 @@ if file_utama is not None and file_kamus2 is not None:
                 # PROSES 3: VLOOKUP BERSYARAT (5-TIER FALLBACK) PADA TABEL 3
                 # =========================================================
                 if not tabel_3.empty:
-                    df_k2_cps_exact = df_k2[df_k2['Jabatan'] == 'CPS']
+                    df_k_utama_cps_exact = df_k_utama[df_k_utama['Jabatan'] == 'CPS']
                     
-                    df_k2_cps_contains = df_k2[
-                        df_k2['Jabatan'].str.contains('CPS', case=False, na=False) & 
-                        (df_k2['Jabatan'] != 'CPS') & 
-                        (~df_k2['Jabatan'].str.contains('#', na=False))
+                    df_k_utama_cps_contains = df_k_utama[
+                        df_k_utama['Jabatan'].str.contains('CPS', case=False, na=False) & 
+                        (df_k_utama['Jabatan'] != 'CPS') & 
+                        (~df_k_utama['Jabatan'].str.contains('#', na=False))
                     ]
                     
-                    kamus_branch_kout_cps = df_k2_cps_exact.drop_duplicates(subset=['K_Outlet']).set_index('K_Outlet')['RMCode'].to_dict()
-                    kamus_kc_outlet_cps = df_k2_cps_exact.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
-                    kamus_kc_outlet_smecps = df_k2_cps_contains.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
-                    kamus_kc_kancab_cps = df_k2_cps_exact.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
-                    kamus_kc_kancab_smecps = df_k2_cps_contains.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
+                    kamus_branch_kout_cps = df_k_utama_cps_exact.drop_duplicates(subset=['K_Outlet']).set_index('K_Outlet')['RMCode'].to_dict()
+                    kamus_kc_outlet_cps = df_k_utama_cps_exact.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
+                    kamus_kc_outlet_smecps = df_k_utama_cps_contains.drop_duplicates(subset=['Outlet']).set_index('Outlet')['RMCode'].to_dict()
+                    kamus_kc_kancab_cps = df_k_utama_cps_exact.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
+                    kamus_kc_kancab_smecps = df_k_utama_cps_contains.drop_duplicates(subset=['Kantor Cabang']).set_index('Kantor Cabang')['RMCode'].to_dict()
                     
                     tabel_3['BRANCH'] = tabel_3['BRANCH'].fillna('').astype(str).str.strip()
                     tabel_3['KC'] = tabel_3['KC'].fillna('').astype(str).str.strip().str.upper()
@@ -281,7 +278,7 @@ if st.session_state.proses_selesai:
             df.to_excel(writer, index=False)
         return buffer.getvalue()
 
-    if st.session_state.pakai_kamus_1:
+    if st.session_state.pakai_kamus_opsional:
         st.subheader("📥 Unduh Hasil Pemrosesan (4 File Terpisah)")
         col1, col2 = st.columns(2)
         col3, col4 = st.columns(2)
@@ -325,5 +322,5 @@ if st.session_state.proses_selesai:
             if not st.session_state.tabel_3b.empty:
                 st.download_button("⬇️ Download Anomali Bukan Konv.", data=df_to_excel(st.session_state.tabel_3b), file_name="3_Anomali_Bukan_Konversi.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-elif not file_utama or not file_kamus2:
-    st.info("👈 Silakan unggah minimal File Utama dan Kamus 2 (List NIP) di menu sebelah kiri terlebih dahulu.")
+elif not file_utama or not file_kamus_utama:
+    st.info("👈 Silakan unggah minimal File Utama dan Kamus Utama (List NIP) di menu sebelah kiri terlebih dahulu.")
