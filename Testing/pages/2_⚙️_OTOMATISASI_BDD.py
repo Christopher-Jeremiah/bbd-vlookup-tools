@@ -256,6 +256,33 @@ if file_utama is not None and file_kamus_utama is not None:
                 tabel_3a = urutkan_rmcode(tabel_3a)
                 tabel_3b = urutkan_rmcode(tabel_3b)
 
+                # =========================================================
+                # PROSES TAMBAHAN: MENGEMBALIKAN KOLOM NOMINAL MENJADI ANGKA
+                # =========================================================
+                def kembalikan_format_angka(df):
+                    if df.empty: return df
+                    for col in df.columns:
+                        col_str = str(col).strip().upper()
+                        
+                        # 1. Deteksi kolom tanggal (misal: "01-MAR") -> cirinya panjang 6 karakter & ada strip '-' di urutan ke-3
+                        is_tanggal = len(col_str) == 6 and col_str[2] == '-'
+                        
+                        # 2. Deteksi kolom pencairan / nominal lainnya (CAIR, MTDREL, AMTREL)
+                        is_nominal = 'CAIR' in col_str or col_str in ['MTDREL', 'AMTREL']
+                        
+                        if is_tanggal or is_nominal:
+                            # Kembalikan string menjadi numerik (angka murni). 
+                            # errors='coerce' akan mengubah sel kosong/teks rusak menjadi NaN agar tidak error.
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                    return df
+                
+                tabel_1 = kembalikan_format_angka(tabel_1)
+                tabel_2_clean = kembalikan_format_angka(tabel_2_clean)
+                tabel_3a = kembalikan_format_angka(tabel_3a)
+                tabel_3b = kembalikan_format_angka(tabel_3b)
+
+                # =========================================================
+
                 st.session_state.tabel_1 = tabel_1
                 st.session_state.tabel_2 = tabel_2_clean
                 st.session_state.tabel_3a = tabel_3a
@@ -276,7 +303,28 @@ if st.session_state.proses_selesai:
     def df_to_excel(df):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl', date_format='DD-MM-YYYY', datetime_format='DD-MM-YYYY') as writer:
-            df.to_excel(writer, index=False)
+            # 1. Tulis data mentah ke lembar kerja Excel dengan nama sheet 'Data'
+            df.to_excel(writer, index=False, sheet_name='Data')
+            
+            # 2. Akses "mesin pembuat Excel" (openpyxl) di balik layar
+            workbook = writer.book
+            worksheet = writer.sheets['Data']
+            
+            # 3. Siapkan Baju Kosmetik: Format pemisah ribuan standar Excel (#,##0)
+            format_ribuan = '#,##0'
+            
+            # 4. Berjalan dari kolom pertama hingga terakhir
+            for col_idx, col_name in enumerate(df.columns, start=1):
+                # Deteksi otomatis: Apakah kolom ini tipe datanya murni Angka?
+                if pd.api.types.is_numeric_dtype(df[col_name]):
+                    # Jika ya, sisir dari baris ke-2 (karena baris 1 adalah judul header)
+                    for row_idx in range(2, len(df) + 2):
+                        sel_excel = worksheet.cell(row=row_idx, column=col_idx)
+                        
+                        # Pastikan selnya tidak kosong, lalu pakaikan Baju Kosmetik!
+                        if pd.notna(sel_excel.value):
+                            sel_excel.number_format = format_ribuan
+                            
         return buffer.getvalue()
 
     mode_unduh = st.radio("Pilih Format Output Excel:", 
