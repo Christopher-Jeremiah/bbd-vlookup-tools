@@ -87,6 +87,9 @@ if file_utama is not None and file_kamus_utama is not None:
                 df_u = baca_file(file_utama.getvalue(), file_utama.name, sheet_u, header_u)
                 df_k_utama = baca_file(file_kamus_utama.getvalue(), file_kamus_utama.name, sheet_k_utama, header_k_utama)
                 
+                # =========================================================
+                # Kosmetik Judul Tanggal
+                # =========================================================
                 def perbaiki_judul_tanggal(df):
                     kolom_rapi = []
                     for col in df.columns:
@@ -107,6 +110,7 @@ if file_utama is not None and file_kamus_utama is not None:
 
                 df_u = perbaiki_judul_tanggal(df_u)
                 
+                # Kosmetik Tanggal Realisasi
                 if 'TGL REAL' in df_u.columns:
                     df_u['TGL REAL'] = pd.to_datetime(df_u['TGL REAL'], errors='coerce').dt.strftime('%d-%m-%Y').fillna('')
 
@@ -117,14 +121,16 @@ if file_utama is not None and file_kamus_utama is not None:
                     df_u['GP1PDT'] = df_u['GP1PDT'].fillna('').astype(str).str.strip()
                     df_u = df_u[(df_u['GP1PDT'] != '') & (df_u['GP1PDT'].str.lower() != 'nan') & (~df_u['GP1PDT'].str.lower().str.contains('total'))]
 
-                if 'NIP RM' in df_u.columns:
-                    df_u['NIP RM'] = df_u['NIP RM'].fillna('').astype(str).str.strip()
-                
+                # =========================================================
+                # Mesin Amplas (Standardization) - NIP RM dibuat Wajib (Tanpa If)
+                # =========================================================
+                df_u['NIP RM'] = df_u['NIP RM'].fillna('').astype(str).str.strip()
                 df_u['ACCOUNT'] = df_u['ACCOUNT'].fillna('').astype(str).str.strip()
-                
+
                 df_k_utama['NIP'] = df_k_utama['NIP'].fillna('').astype(str).str.strip()
                 df_k_utama['K_Outlet'] = df_k_utama['K_Outlet'].fillna('').astype(str).str.strip()
                 df_k_utama['Outlet'] = df_k_utama['Outlet'].fillna('').astype(str).str.strip().str.upper()
+                
                 if 'Kantor Cabang' in df_k_utama.columns:
                     df_k_utama['Kantor Cabang'] = df_k_utama['Kantor Cabang'].fillna('').astype(str).str.strip().str.upper()
                 df_k_utama['Jabatan'] = df_k_utama['Jabatan'].fillna('').astype(str).str.strip().str.upper()
@@ -132,6 +138,7 @@ if file_utama is not None and file_kamus_utama is not None:
                 # =========================================================
                 # PROSES 1: MENGGUNAKAN DATA KEMARIN (JIKA ADA)
                 # =========================================================
+                # Seragamkan Konversi
                 if 'KONVERSI KPP' in df_u.columns:
                     dict_replace_kpp = {
                         "KPP Demand - Konversi Konsumer": "Konversi Konsumer",
@@ -143,13 +150,14 @@ if file_utama is not None and file_kamus_utama is not None:
                 if 'RMCode' not in df_u.columns:
                     df_u['RMCode'] = np.nan
                 
+                # VLOOKUP Kamus Opsional H-1
                 if st.session_state.pakai_kamus_opsional:
                     df_k_opsional = baca_file(file_kamus_opsional.getvalue(), file_kamus_opsional.name, sheet_k_opsional, header_k_opsional)
                     df_k_opsional['ACCOUNT'] = df_k_opsional['ACCOUNT'].fillna('').astype(str).str.strip()
                     kamus_1_rmcode = df_k_opsional.drop_duplicates(subset=['ACCOUNT']).set_index('ACCOUNT')['RMCode'].to_dict()
                     df_u['RMCode'] = df_u['ACCOUNT'].map(kamus_1_rmcode)
-                    
-                # ---> PERBAIKAN STRUKTUR KOLOM AGAR <<cek>> & K_Out TIDAK TERLEMPAR KE KANAN SAAT DIGABUNG <---
+                
+                # Perbaikan Struktur Kolom agar Rapi
                 if 'SNAME' in df_u.columns:
                     cols = list(df_u.columns)
                     if 'RMCode' in cols: cols.remove('RMCode')
@@ -165,6 +173,7 @@ if file_utama is not None and file_kamus_utama is not None:
                     df_u['K_Out by NIP'] = np.nan
                     df_u = df_u[cols]
                 
+                # Membelah Tabel 1 dan Tabel 2
                 mask_match_acc = df_u['RMCode'].notna() & (df_u['RMCode'].astype(str).str.strip() != '') & (df_u['RMCode'].astype(str).str.strip().str.lower() != 'nan')
                 tabel_1 = df_u[mask_match_acc].copy()
                 tabel_2 = df_u[~mask_match_acc].copy()
@@ -264,15 +273,14 @@ if file_utama is not None and file_kamus_utama is not None:
                     for col in df.columns:
                         col_str = str(col).strip().upper()
                         
-                        # 1. Deteksi kolom tanggal (misal: "01-MAR") -> cirinya panjang 6 karakter & ada strip '-' di urutan ke-3
+                        # 1. Deteksi kolom tanggal
                         is_tanggal = len(col_str) == 6 and col_str[2] == '-'
-                        
-                        # 2. Deteksi kolom pencairan / nominal lainnya (CAIR, MTDREL, AMTREL)
+                        # 2. Deteksi kolom nominal
                         is_nominal = 'CAIR' in col_str or col_str in ['MTDREL', 'AMTREL']
+                        # 3. Deteksi kolom ACCOUNT (Khusus Dashboard)
+                        is_account = col_str == 'ACCOUNT'
                         
-                        if is_tanggal or is_nominal:
-                            # Kembalikan string menjadi numerik (angka murni). 
-                            # errors='coerce' akan mengubah sel kosong/teks rusak menjadi NaN agar tidak error.
+                        if is_tanggal or is_nominal or is_account:
                             df[col] = pd.to_numeric(df[col], errors='coerce')
                     return df
                 
@@ -303,27 +311,23 @@ if st.session_state.proses_selesai:
     def df_to_excel(df):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl', date_format='DD-MM-YYYY', datetime_format='DD-MM-YYYY') as writer:
-            # 1. Tulis data mentah ke lembar kerja Excel dengan nama sheet 'Data'
             df.to_excel(writer, index=False, sheet_name='Data')
-            
-            # 2. Akses "mesin pembuat Excel" (openpyxl) di balik layar
             workbook = writer.book
             worksheet = writer.sheets['Data']
             
-            # 3. Siapkan Baju Kosmetik: Format pemisah ribuan standar Excel (#,##0)
-            format_ribuan = '#,##0'
+            format_ribuan = '#,##0' # Uang
+            format_akun = '0'       # ACCOUNT (Tanpa titik desimal)
             
-            # 4. Berjalan dari kolom pertama hingga terakhir
             for col_idx, col_name in enumerate(df.columns, start=1):
-                # Deteksi otomatis: Apakah kolom ini tipe datanya murni Angka?
+                col_str = str(col_name).strip().upper()
                 if pd.api.types.is_numeric_dtype(df[col_name]):
-                    # Jika ya, sisir dari baris ke-2 (karena baris 1 adalah judul header)
                     for row_idx in range(2, len(df) + 2):
                         sel_excel = worksheet.cell(row=row_idx, column=col_idx)
-                        
-                        # Pastikan selnya tidak kosong, lalu pakaikan Baju Kosmetik!
                         if pd.notna(sel_excel.value):
-                            sel_excel.number_format = format_ribuan
+                            if col_str == 'ACCOUNT':
+                                sel_excel.number_format = format_akun
+                            else:
+                                sel_excel.number_format = format_ribuan
                             
         return buffer.getvalue()
 
