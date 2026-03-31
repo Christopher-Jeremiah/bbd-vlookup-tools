@@ -87,9 +87,6 @@ if file_utama is not None and file_kamus_utama is not None:
                 df_u = baca_file(file_utama.getvalue(), file_utama.name, sheet_u, header_u)
                 df_k_utama = baca_file(file_kamus_utama.getvalue(), file_kamus_utama.name, sheet_k_utama, header_k_utama)
                 
-                # =========================================================
-                # Kosmetik Judul Tanggal
-                # =========================================================
                 def perbaiki_judul_tanggal(df):
                     kolom_rapi = []
                     for col in df.columns:
@@ -110,7 +107,6 @@ if file_utama is not None and file_kamus_utama is not None:
 
                 df_u = perbaiki_judul_tanggal(df_u)
                 
-                # Kosmetik Tanggal Realisasi
                 if 'TGL REAL' in df_u.columns:
                     df_u['TGL REAL'] = pd.to_datetime(df_u['TGL REAL'], errors='coerce').dt.strftime('%d-%m-%Y').fillna('')
 
@@ -121,16 +117,13 @@ if file_utama is not None and file_kamus_utama is not None:
                     df_u['GP1PDT'] = df_u['GP1PDT'].fillna('').astype(str).str.strip()
                     df_u = df_u[(df_u['GP1PDT'] != '') & (df_u['GP1PDT'].str.lower() != 'nan') & (~df_u['GP1PDT'].str.lower().str.contains('total'))]
 
-                # =========================================================
-                # Mesin Amplas (Standardization) - NIP RM dibuat Wajib (Tanpa If)
-                # =========================================================
+                
                 df_u['NIP RM'] = df_u['NIP RM'].fillna('').astype(str).str.strip()
                 df_u['ACCOUNT'] = df_u['ACCOUNT'].fillna('').astype(str).str.strip()
 
                 df_k_utama['NIP'] = df_k_utama['NIP'].fillna('').astype(str).str.strip()
                 df_k_utama['K_Outlet'] = df_k_utama['K_Outlet'].fillna('').astype(str).str.strip()
                 df_k_utama['Outlet'] = df_k_utama['Outlet'].fillna('').astype(str).str.strip().str.upper()
-                
                 if 'Kantor Cabang' in df_k_utama.columns:
                     df_k_utama['Kantor Cabang'] = df_k_utama['Kantor Cabang'].fillna('').astype(str).str.strip().str.upper()
                 df_k_utama['Jabatan'] = df_k_utama['Jabatan'].fillna('').astype(str).str.strip().str.upper()
@@ -138,7 +131,6 @@ if file_utama is not None and file_kamus_utama is not None:
                 # =========================================================
                 # PROSES 1: MENGGUNAKAN DATA KEMARIN (JIKA ADA)
                 # =========================================================
-                # Seragamkan Konversi
                 if 'KONVERSI KPP' in df_u.columns:
                     dict_replace_kpp = {
                         "KPP Demand - Konversi Konsumer": "Konversi Konsumer",
@@ -150,14 +142,13 @@ if file_utama is not None and file_kamus_utama is not None:
                 if 'RMCode' not in df_u.columns:
                     df_u['RMCode'] = np.nan
                 
-                # VLOOKUP Kamus Opsional H-1
                 if st.session_state.pakai_kamus_opsional:
                     df_k_opsional = baca_file(file_kamus_opsional.getvalue(), file_kamus_opsional.name, sheet_k_opsional, header_k_opsional)
                     df_k_opsional['ACCOUNT'] = df_k_opsional['ACCOUNT'].fillna('').astype(str).str.strip()
                     kamus_1_rmcode = df_k_opsional.drop_duplicates(subset=['ACCOUNT']).set_index('ACCOUNT')['RMCode'].to_dict()
                     df_u['RMCode'] = df_u['ACCOUNT'].map(kamus_1_rmcode)
                 
-                # Perbaikan Struktur Kolom agar Rapi
+                # ---> PERBAIKAN STRUKTUR KOLOM AGAR <<cek>> & K_Out TIDAK TERLEMPAR KE KANAN SAAT DIGABUNG <---
                 if 'SNAME' in df_u.columns:
                     cols = list(df_u.columns)
                     if 'RMCode' in cols: cols.remove('RMCode')
@@ -173,7 +164,6 @@ if file_utama is not None and file_kamus_utama is not None:
                     df_u['K_Out by NIP'] = np.nan
                     df_u = df_u[cols]
                 
-                # Membelah Tabel 1 dan Tabel 2
                 mask_match_acc = df_u['RMCode'].notna() & (df_u['RMCode'].astype(str).str.strip() != '') & (df_u['RMCode'].astype(str).str.strip().str.lower() != 'nan')
                 tabel_1 = df_u[mask_match_acc].copy()
                 tabel_2 = df_u[~mask_match_acc].copy()
@@ -273,9 +263,9 @@ if file_utama is not None and file_kamus_utama is not None:
                     for col in df.columns:
                         col_str = str(col).strip().upper()
                         
-                        # 1. Deteksi kolom tanggal
+                        # 1. Deteksi kolom tanggal (misal: "01-MAR")
                         is_tanggal = len(col_str) == 6 and col_str[2] == '-'
-                        # 2. Deteksi kolom nominal
+                        # 2. Deteksi kolom pencairan / nominal lainnya
                         is_nominal = 'CAIR' in col_str or col_str in ['MTDREL', 'AMTREL']
                         # 3. Deteksi kolom ACCOUNT (Khusus Dashboard)
                         is_account = col_str == 'ACCOUNT'
@@ -311,17 +301,35 @@ if st.session_state.proses_selesai:
     def df_to_excel(df):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl', date_format='DD-MM-YYYY', datetime_format='DD-MM-YYYY') as writer:
+            # 1. Tulis data ke sheet Excel (Otomatis menulis Header di Baris 1)
             df.to_excel(writer, index=False, sheet_name='Data')
+            
             workbook = writer.book
             worksheet = writer.sheets['Data']
             
-            format_ribuan = '#,##0' # Uang
-            format_akun = '0'       # ACCOUNT (Tanpa titik desimal)
+            # --- FITUR BARU: HELPER VLOOKUP (Menyisipkan Baris di Atas) ---
+            worksheet.insert_rows(1) # Memaksa semua data & header turun 1 baris
+            
+            # Cari indeks/urutan kolom 'ACCOUNT'
+            col_names = [str(c).strip().upper() for c in df.columns]
+            if 'ACCOUNT' in col_names:
+                idx_account = col_names.index('ACCOUNT') + 1 # +1 Karena Excel dimulai dari 1
+                
+                nomor_urut = 1
+                # Mulai menulis angka 1, 2, 3... dari kolom ACCOUNT sampai ujung kanan tabel
+                for col_num in range(idx_account, len(df.columns) + 1):
+                    worksheet.cell(row=1, column=col_num).value = nomor_urut
+                    nomor_urut += 1
+            # -------------------------------------------------------------
+            
+            format_ribuan = '#,##0' 
+            format_akun = '0'       
             
             for col_idx, col_name in enumerate(df.columns, start=1):
                 col_str = str(col_name).strip().upper()
                 if pd.api.types.is_numeric_dtype(df[col_name]):
-                    for row_idx in range(2, len(df) + 2):
+                    # Mulai dari baris 3 (Karena Baris 1: Angka VLOOKUP, Baris 2: Header)
+                    for row_idx in range(3, len(df) + 3):
                         sel_excel = worksheet.cell(row=row_idx, column=col_idx)
                         if pd.notna(sel_excel.value):
                             if col_str == 'ACCOUNT':
