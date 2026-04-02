@@ -424,6 +424,6 @@ if st.session_state.proses_selesai:
             st.info(f"📑 **File Gabungan Master**\nBerisi penggabungan dari: {teks_info}. \n*(Total {len(df_gabungan)} baris termasuk baris pemisah kosong)*")
             
             st.download_button(label=f"⬇️ Unduh 1 File Master (Siap untuk VLOOKUP H-1 Besok)", data=df_to_excel(df_gabungan), file_name=f"1_by_Rek_All_Master_Data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+            
 elif not file_utama or not file_kamus_utama:
     st.info("👈 Silakan unggah minimal File Utama dan Kamus Utama (List NIP) di menu sebelah kiri terlebih dahulu.")
