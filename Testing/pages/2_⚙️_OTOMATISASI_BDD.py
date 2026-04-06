@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
-
+tester
 st.set_page_config(page_title="Otomatisasi BBD", page_icon="⚙️", layout="wide")
 st.title("⚙️ Otomatisasi BBD")
 st.write("Aplikasi ini dirancang khusus untuk memproses data BBD. Anda wajib mengunggah File Utama dan Kamus Utama (List NIP). Kamus Opsional (BBD Kemarin) bersifat opsional.")
