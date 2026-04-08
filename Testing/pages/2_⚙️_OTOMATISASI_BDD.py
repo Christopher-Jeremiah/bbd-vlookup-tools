@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import io
 
+# Impor pustaka warna dari openpyxl
+from openpyxl.styles import PatternFill
+
 st.set_page_config(page_title="Otomatisasi BBD", page_icon="⚙️", layout="wide")
 st.title("⚙️ Otomatisasi BBD")
 st.write("Aplikasi ini dirancang khusus untuk memproses data BBD. Anda wajib mengunggah File Utama dan Kamus Utama (List NIP). Kamus Opsional (BBD Kemarin) bersifat opsional.")
@@ -91,15 +94,15 @@ if file_utama is not None and file_kamus_utama is not None:
                     kolom_rapi = []
                     for col in df.columns:
                         if isinstance(col, pd.Timestamp):
-                            kolom_rapi.append(col.strftime('%d-%b'))
+                            kolom_rapi.append(col.strftime('%d-%b').upper())
                         else:
                             col_str = str(col)
                             if '00:00:00' in col_str or (len(col_str) >= 10 and col_str[4] == '-' and col_str[7] == '-'):
                                 try:
                                     tgl_obj = pd.to_datetime(col_str)
-                                    kolom_rapi.append(tgl_obj.strftime('%d-%b'))
+                                    kolom_rapi.append(tgl_obj.strftime('%d-%b').upper())
                                 except:
-                                    kolom_rapi.append(col_str)
+                                    kolom_rapi.append(col_str.upper())
                             else:
                                 kolom_rapi.append(col_str)
                     df.columns = kolom_rapi
@@ -263,11 +266,8 @@ if file_utama is not None and file_kamus_utama is not None:
                     for col in df.columns:
                         col_str = str(col).strip().upper()
                         
-                        # 1. Deteksi kolom tanggal (misal: "01-MAR")
                         is_tanggal = len(col_str) == 6 and col_str[2] == '-'
-                        # 2. Deteksi kolom pencairan / nominal lainnya
                         is_nominal = 'CAIR' in col_str or col_str in ['MTDREL', 'AMTREL']
-                        # 3. Deteksi kolom ACCOUNT (Khusus Dashboard)
                         is_account = col_str == 'ACCOUNT'
                         
                         if is_tanggal or is_nominal or is_account:
@@ -292,7 +292,7 @@ if file_utama is not None and file_kamus_utama is not None:
                 st.error(f"❌ Terjadi kesalahan mesin: {e}. Detail: {traceback.format_exc()}")
 
 # ==========================================
-# 3. AREA UNDUH DATA (ADAPTIF UI DENGAN MODE GABUNGAN)
+# 3. AREA UNDUH DATA (ADAPTIF UI DENGAN KOSMETIK WARNA)
 # ==========================================
 if st.session_state.proses_selesai:
     st.success("✅ Seluruh tahapan Cascading ETL, Kosmetik Tanggal, dan Pengurutan A-Z berhasil dieksekusi!")
@@ -301,41 +301,69 @@ if st.session_state.proses_selesai:
     def df_to_excel(df):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl', date_format='DD-MM-YYYY', datetime_format='DD-MM-YYYY') as writer:
-            # 1. Tulis data ke sheet Excel (Otomatis menulis Header di Baris 1)
             df.to_excel(writer, index=False, sheet_name='Data')
             
             workbook = writer.book
             worksheet = writer.sheets['Data']
             
-            # --- FITUR BARU: HELPER VLOOKUP (Menyisipkan Baris di Atas) ---
-            worksheet.insert_rows(1) # Memaksa semua data & header turun 1 baris
+            # --- FITUR BARU 1: HELPER VLOOKUP (Menyisipkan Baris di Atas) ---
+            worksheet.insert_rows(1)
             
-            # Cari indeks/urutan kolom 'ACCOUNT'
             col_names = [str(c).strip().upper() for c in df.columns]
             if 'ACCOUNT' in col_names:
-                idx_account = col_names.index('ACCOUNT') + 1 # +1 Karena Excel dimulai dari 1
-                
+                idx_account = col_names.index('ACCOUNT') + 1
                 nomor_urut = 1
-                # Mulai menulis angka 1, 2, 3... dari kolom ACCOUNT sampai ujung kanan tabel
                 for col_num in range(idx_account, len(df.columns) + 1):
                     worksheet.cell(row=1, column=col_num).value = nomor_urut
                     nomor_urut += 1
             # -------------------------------------------------------------
             
+            # --- FITUR BARU 2: PALET WARNA (KOSMETIK) ---
+            warna_hijau_tua = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
+            warna_hijau_muda = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+            warna_kuning = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")     
+            warna_pink = PatternFill(start_color="FFCCFF", end_color="FFCCFF", fill_type="solid")       
+            
+            # PERUBAHAN: Menambahkan 'ACCOUNT' ke dalam daftar yang diwarnai hijau
+            kolom_hijau = ['ACCOUNT', 'RMCODE', '<<CEK>>', 'K_OUT BY NIP']
+            # -------------------------------------------------------------
+
             format_ribuan = '#,##0' 
             format_akun = '0'       
             
             for col_idx, col_name in enumerate(df.columns, start=1):
                 col_str = str(col_name).strip().upper()
-                if pd.api.types.is_numeric_dtype(df[col_name]):
-                    # Mulai dari baris 3 (Karena Baris 1: Angka VLOOKUP, Baris 2: Header)
-                    for row_idx in range(3, len(df) + 3):
-                        sel_excel = worksheet.cell(row=row_idx, column=col_idx)
-                        if pd.notna(sel_excel.value):
-                            if col_str == 'ACCOUNT':
-                                sel_excel.number_format = format_akun
-                            else:
-                                sel_excel.number_format = format_ribuan
+                
+                # --- APPLY KOSMETIK WARNA PADA HEADER (Baris 2) ---
+                sel_header = worksheet.cell(row=2, column=col_idx)
+                
+                is_tanggal = len(col_str) == 6 and col_str[2] == '-'
+                is_cair = 'CAIR' in col_str 
+                is_hijau = col_str in kolom_hijau # Berlaku untuk ACCOUNT, RMCODE, dll.
+                
+                if is_hijau:
+                    sel_header.fill = warna_hijau_tua
+                elif is_tanggal:
+                    sel_header.fill = warna_kuning
+                elif is_cair:
+                    sel_header.fill = warna_pink
+                # --------------------------------------------------
+
+                # --- APPLY KOSMETIK FORMAT ANGKA & WARNA ISI DATA (Baris 3 ke bawah) ---
+                is_numeric_col = pd.api.types.is_numeric_dtype(df[col_name])
+                
+                for row_idx in range(3, len(df) + 3):
+                    sel_excel = worksheet.cell(row=row_idx, column=col_idx)
+                    
+                    if is_hijau:
+                        sel_excel.fill = warna_hijau_muda
+                    
+                    if is_numeric_col and pd.notna(sel_excel.value):
+                        if col_str == 'ACCOUNT':
+                            sel_excel.number_format = format_akun
+                        else:
+                            sel_excel.number_format = format_ribuan
+                # ----------------------------------------------------------------------
                             
         return buffer.getvalue()
 
@@ -424,6 +452,6 @@ if st.session_state.proses_selesai:
             st.info(f"📑 **File Gabungan Master**\nBerisi penggabungan dari: {teks_info}. \n*(Total {len(df_gabungan)} baris termasuk baris pemisah kosong)*")
             
             st.download_button(label=f"⬇️ Unduh 1 File Master (Siap untuk VLOOKUP H-1 Besok)", data=df_to_excel(df_gabungan), file_name=f"1_by_Rek_All_Master_Data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            
+
 elif not file_utama or not file_kamus_utama:
     st.info("👈 Silakan unggah minimal File Utama dan Kamus Utama (List NIP) di menu sebelah kiri terlebih dahulu.")
