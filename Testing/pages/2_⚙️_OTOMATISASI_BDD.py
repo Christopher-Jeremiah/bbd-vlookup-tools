@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 import io
 
-# Impor pustaka warna dari openpyxl
-from openpyxl.styles import PatternFill
+# Impor pustaka warna dan BORDER dari openpyxl
+from openpyxl.styles import PatternFill, Border, Side
 
 st.set_page_config(page_title="Otomatisasi BBD", page_icon="⚙️", layout="wide")
 st.title("⚙️ Otomatisasi BBD")
@@ -292,7 +292,7 @@ if file_utama is not None and file_kamus_utama is not None:
                 st.error(f"❌ Terjadi kesalahan mesin: {e}. Detail: {traceback.format_exc()}")
 
 # ==========================================
-# 3. AREA UNDUH DATA (ADAPTIF UI DENGAN KOSMETIK WARNA)
+# 3. AREA UNDUH DATA (ADAPTIF UI DENGAN KOSMETIK WARNA & BORDER)
 # ==========================================
 if st.session_state.proses_selesai:
     st.success("✅ Seluruh tahapan Cascading ETL, Kosmetik Tanggal, dan Pengurutan A-Z berhasil dieksekusi!")
@@ -324,8 +324,11 @@ if st.session_state.proses_selesai:
             warna_kuning = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")     
             warna_pink = PatternFill(start_color="FFCCFF", end_color="FFCCFF", fill_type="solid")       
             
-            # PERUBAHAN: Menambahkan 'ACCOUNT' ke dalam daftar yang diwarnai hijau
             kolom_hijau = ['ACCOUNT', 'RMCODE', '<<CEK>>', 'K_OUT BY NIP']
+            
+            # --- FITUR BARU 3: BORDER GARIS TEBAL KOTAK (KHUSUS HEADER) ---
+            garis_tebal = Side(border_style="medium", color="000000") # medium membuat garis lebih tebal/tegas
+            bingkai_kotak_tebal = Border(left=garis_tebal, right=garis_tebal, top=garis_tebal, bottom=garis_tebal)
             # -------------------------------------------------------------
 
             format_ribuan = '#,##0' 
@@ -334,8 +337,11 @@ if st.session_state.proses_selesai:
             for col_idx, col_name in enumerate(df.columns, start=1):
                 col_str = str(col_name).strip().upper()
                 
-                # --- APPLY KOSMETIK WARNA PADA HEADER (Baris 2) ---
+                # --- APPLY KOSMETIK WARNA & BORDER PADA HEADER (Baris 2) ---
                 sel_header = worksheet.cell(row=2, column=col_idx)
+                
+                # Memasang bingkai tebal pada sel judul (header)
+                sel_header.border = bingkai_kotak_tebal
                 
                 is_tanggal = len(col_str) == 6 and col_str[2] == '-'
                 is_cair = 'CAIR' in col_str 
